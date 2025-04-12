@@ -40,35 +40,35 @@
 <table>
   <tr>
     <th>Role</th>
-    <th>Responsibilities</th>
+    <th>Member</th>
   </tr>
   <tr>
     <td>Group Leader</td>
-    <td>Main branch management, PR reviews</td>
+    <td>Bryl Darel Gorgonio</td>
   </tr>
   <tr>
     <td>Backend Developer 1</td>
-    <td>Email sign-up, verification, authentication</td>
+    <td>Angela Postrero</td>
   </tr>
   <tr>
     <td>Backend Developer 2</td>
-    <td>Authorization, password reset, CRUD</td>
+    <td>Christine Anne Alesna</td>
   </tr>
   <tr>
     <td>Frontend Developer 1</td>
-    <td>Sign-up, verification, authentication UI</td>
+    <td>Kobe Bryan Amaro</td>
   </tr>
   <tr>
     <td>Frontend Developer 2</td>
-    <td>Profile management, admin dashboard, fake backend</td>
+    <td>Bryl Darel Gorgonio</td>
   </tr>
   <tr>
     <td>Tester 1</td>
-    <td>Functional testing</td>
+    <td>Christine Anne Alesna</td>
   </tr>
   <tr>
     <td>Tester 2</td>
-    <td>Security testing</td>
+    <td>Bryl Darel Gorgonio</td>
   </tr>
 </table>
 
@@ -85,7 +85,7 @@
 <h3>Backend Installation</h3>
 <ol>
   <li>Clone the repository:
-    <pre>git clone https://github.com/your-username/user-management-system.git</pre>
+    <pre>git clone https://github.com/BrylDG/user-management-system.git</pre>
   </li>
   <li>Navigate to backend:
     <pre>cd backend</pre>
