@@ -3,7 +3,7 @@ import { BrowserModule } from '@angular/platform-browser';
 import { ReactiveFormsModule } from '@angular/forms';
 import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { RouterModule } from '@angular/router';
-
+import { CommonModule } from '@angular/common';
 import { AppRoutingModule } from './app-routing.module';
 import { JwtInterceptor, ErrorInterceptor, appInitializer } from './_helpers';
 import { AccountService } from './_services';
@@ -14,10 +14,11 @@ import { HomeComponent } from './home';
 @NgModule({
   imports: [
     BrowserModule,
-    RouterModule,
     ReactiveFormsModule,
     HttpClientModule,
-    AppRoutingModule
+    CommonModule,
+    AppRoutingModule, // Should come after RouterModule.forRoot([])
+    // Remove AlertComponent from imports (components go in declarations)
   ],
   declarations: [
     AppComponent,

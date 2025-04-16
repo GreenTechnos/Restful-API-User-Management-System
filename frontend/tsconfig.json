@@ -12,6 +12,8 @@
     "importHelpers": true,
     "target": "es2015",
     "module": "es2020",
+    "useDefineForClassFields": false,
+    "allowSyntheticDefaultImports": true,
     "lib": [
       "es2018",
       "dom"
