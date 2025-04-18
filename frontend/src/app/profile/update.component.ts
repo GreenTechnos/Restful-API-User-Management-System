@@ -3,8 +3,8 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { first } from 'rxjs/operators';
 
-import { AccountService, AlertService } from '@app_services';
-import { MustWatch } from '@app_helpers';
+import { AccountService, AlertService } from '@app/_services';
+import { MustMatch } from '@app/_helpers';
 
 @Component({ templateUrl: 'update.component.html' })
 export class UpdateComponent implements OnInit {
@@ -20,7 +20,7 @@ export class UpdateComponent implements OnInit {
         private router: Router,
         private accountService: AccountService,
         private alertService: AlertService
-    ) {}
+    ) { }
 
     ngOnInit() {
         this.form = this.formBuilder.group({
@@ -31,7 +31,7 @@ export class UpdateComponent implements OnInit {
             password: ['', [Validators.minLength(6)]],
             confirmPassword: ['']
         }, {
-            validator: MustWatch('password', 'confirmPassword')
+            validator: MustMatch('password', 'confirmPassword')
         });
     }
 
@@ -40,38 +40,45 @@ export class UpdateComponent implements OnInit {
 
     onSubmit() {
         this.submitted = true;
-    
+
         // reset alerts on submit
         this.alertService.clear();
-    
+
         // stop here if form is invalid
         if (this.form.invalid) {
-          return;
+            return;
         }
-    
+
         this.loading = true;
         this.accountService.update(this.account.id, this.form.value)
-          .pipe(first())
-          .subscribe({
-            next: () => {
-              this.alertService.success('Update successful', { keepAfterRouteChange: true });
-              this.router.navigate(['../'], { relativeTo: this.route });
-            },
-            error: error => {
-              this.alertService.error(error);
-              this.loading = false;
-            }
-          });
-      }
-    
-      onDelete() {
-        if (confirm('Are you sure?')) {
-          this.deleting = true;
-          this.accountService.delete(this.account.id)
             .pipe(first())
-            .subscribe(() => {
-              this.alertService.success('Account deleted successfully', { keepAfterRouteChange: true });
+            .subscribe({
+                next: () => {
+                    this.alertService.success('Update successful', { keepAfterRouteChange: true });
+                    this.router.navigate(['../'], { relativeTo: this.route });
+                },
+                error: error => {
+                    this.alertService.error(error);
+                    this.loading = false;
+                }
             });
+    }
+
+    onDelete() {
+        if (confirm('Are you sure?')) {
+            this.deleting = true;
+            this.accountService.delete(this.account.id)
+                .pipe(first())
+                .subscribe({
+                    next: () => {
+                        this.alertService.success('Account deleted successfully', { keepAfterRouteChange: true });
+                        this.router.navigate(['/'], { relativeTo: this.route });
+                    },
+                    error: error => {
+                        this.alertService.error(error);
+                        this.deleting = false;
+                    }
+                });
         }
-      }
+    }
 }

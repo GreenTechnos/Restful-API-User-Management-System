@@ -1,3 +1,4 @@
+// must-match.validator.ts
 import { UntypedFormGroup } from '@angular/forms';
 
 // custom validator to check that two fields match
@@ -17,5 +18,5 @@ export function MustMatch(controlName: string, matchingControlName: string) {
         } else {
             matchingControl.setErrors(null);
         }
-    }
+    };
 }

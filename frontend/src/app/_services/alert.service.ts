@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
-import { filter } from 'rxjs/operators';  // Correct import path
+import { filter } from 'rxjs/operators';
+
 import { Alert, AlertType } from '@app/_models';
 
 @Injectable({ providedIn: 'root' })
@@ -33,7 +34,7 @@ export class AlertService {
     // core alert method
     alert(alert: Alert) {
         alert.id = alert.id || this.defaultId;
-        alert.autoClose = alert.autoClose === undefined ? true : alert.autoClose;
+        alert.autoClose = (alert.autoClose === undefined ? true : alert.autoClose);
         this.subject.next(alert);
     }
 

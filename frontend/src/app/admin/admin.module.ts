@@ -8,15 +8,15 @@ import { LayoutComponent } from './layout.component';
 import { OverviewComponent } from './overview.component';
 
 @NgModule({
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    AdminRoutingModule
-  ],
-  declarations: [
-    SubNavComponent,
-    LayoutComponent,
-    OverviewComponent
-  ]
+    imports: [
+        CommonModule,
+        ReactiveFormsModule,
+        AdminRoutingModule
+    ],
+    declarations: [
+        SubNavComponent,
+        LayoutComponent,
+        OverviewComponent
+    ]
 })
 export class AdminModule { }

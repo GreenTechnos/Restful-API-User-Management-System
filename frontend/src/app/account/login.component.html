@@ -3,17 +3,19 @@
     <form [formGroup]="form" (ngSubmit)="onSubmit()">
         <div class="form-group">
             <label>Email</label>
-            <input type="text" formControlName="email" class="form-control" [ngClass]="{ 'is-invalid': submitted && f.errors }" />
-            <div *ngIf="submitted && f.errors" class="invalid-feedback">
-                <div *ngIf="f.errors.required">Email is required</div>
-                <div *ngIf="f.errors.email">Email is invalid</div>
+            <input type="text" formControlName="email" class="form-control"
+                [ngClass]="{ 'is-invalid': submitted && f.email.errors }" />
+            <div *ngIf="submitted && f.email.errors" class="invalid-feedback">
+                <div *ngIf="f.email.errors.required">Email is required</div>
+                <div *ngIf="f.email.errors.email">Email is invalid</div>
             </div>
         </div>
         <div class="form-group">
             <label>Password</label>
-            <input type="password" formControlName="password" class="form-control" [ngClass]="{ 'is-invalid': submitted && f.errors }" />
-            <div *ngIf="submitted && f.errors" class="invalid-feedback">
-                <div *ngIf="f.errors.required">Password is required</div>
+            <input type="password" formControlName="password" class="form-control"
+                [ngClass]="{ 'is-invalid': submitted && f.password.errors }" />
+            <div *ngIf="submitted && f.password.errors" class="invalid-feedback">
+                <div *ngIf="f.password.errors.required">Password is required</div>
             </div>
         </div>
         <div class="form-row">
@@ -25,7 +27,7 @@
                 <a routerLink="../register" class="btn btn-link">Register</a>
             </div>
             <div class="form-group col text-right">
-                <a routerLink="../forgot-password" class="btn btn-link">Forgot Password?</a>
+                <a routerLink="../forgot-password" class="btn btn-link pr-0">Forgot Password?</a>
             </div>
         </div>
     </form>

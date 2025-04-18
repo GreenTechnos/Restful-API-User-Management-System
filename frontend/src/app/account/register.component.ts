@@ -8,7 +8,7 @@ import { MustMatch } from '@app/_helpers';
 
 @Component({ templateUrl: 'register.component.html' })
 export class RegisterComponent implements OnInit {
-    form!: UntypedFormGroup;
+    form: UntypedFormGroup;
     loading = false;
     submitted = false;
 
@@ -36,6 +36,7 @@ export class RegisterComponent implements OnInit {
 
     // convenience getter for easy access to form fields
     get f() { return this.form.controls; }
+
     onSubmit() {
         this.submitted = true;
 
@@ -52,7 +53,10 @@ export class RegisterComponent implements OnInit {
             .pipe(first())
             .subscribe({
                 next: () => {
-                    this.alertService.success('Registration successful, please check your email for verification instructions', { keepAfterRouteChange: true });
+                    this.alertService.success(
+                        'Registration successful, please check your email for verification instructions',
+                        { keepAfterRouteChange: true }
+                    );
                     this.router.navigate(['../login'], { relativeTo: this.route });
                 },
                 error: error => {
