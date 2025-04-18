@@ -8,15 +8,15 @@ import { DetailsComponent } from './details.component';
 import { UpdateComponent } from './update.component';
 
 @NgModule({
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    ProfileRoutingModule
-  ],
-  declarations: [
-    LayoutComponent,
-    DetailsComponent,
-    UpdateComponent
-  ]
+    imports: [
+        CommonModule,
+        ReactiveFormsModule,
+        ProfileRoutingModule
+    ],
+    declarations: [
+        LayoutComponent,
+        DetailsComponent,
+        UpdateComponent
+    ]
 })
 export class ProfileModule { }

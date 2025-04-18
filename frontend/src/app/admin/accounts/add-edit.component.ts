@@ -20,12 +20,12 @@ export class AddEditComponent implements OnInit {
         private router: Router,
         private accountService: AccountService,
         private alertService: AlertService
-    ) {}
+    ) { }
 
     ngOnInit() {
         this.id = this.route.snapshot.params['id'];
         this.isAddMode = !this.id;
-        
+
         this.form = this.formBuilder.group({
             title: ['', Validators.required],
             firstName: ['', Validators.required],
@@ -50,15 +50,15 @@ export class AddEditComponent implements OnInit {
 
     onSubmit() {
         this.submitted = true;
-        
+
         // reset alerts on submit
         this.alertService.clear();
-        
+
         // stop here if form is invalid
         if (this.form.invalid) {
             return;
         }
-        
+
         this.loading = true;
         if (this.isAddMode) {
             this.createAccount();
@@ -66,7 +66,7 @@ export class AddEditComponent implements OnInit {
             this.updateAccount();
         }
     }
-    
+
     private createAccount() {
         this.accountService.create(this.form.value)
             .pipe(first())
@@ -81,7 +81,7 @@ export class AddEditComponent implements OnInit {
                 }
             });
     }
-    
+
     private updateAccount() {
         this.accountService.update(this.id, this.form.value)
             .pipe(first())

@@ -3,7 +3,6 @@ import { Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { map, finalize } from 'rxjs/operators';
-
 import { environment } from '@environments/environment';
 import { Account } from '@app/_models';
 
@@ -27,26 +26,23 @@ export class AccountService {
     }
 
     login(email: string, password: string) {
-        return this.http.post<Account>(`${baseUrl}/authenticate`, { email, password }, { withCredentials: true })
+        return this.http.post<any>(`${baseUrl}/authenticate`, { email, password }, { withCredentials: true })
             .pipe(map(account => {
-                // store user details and jwt token in local storage to keep user logged in between page refreshes
                 this.accountSubject.next(account);
                 this.startRefreshTokenTimer();
                 return account;
             }));
     }
+
     logout() {
-        this.http.post<any>(`${baseUrl}/revoke-token`, {}, { withCredentials: true }).subscribe({
-            next: () => {
-                this.stopRefreshTokenTimer();
-                this.accountSubject.next(null);
-                this.router.navigate(['/account/login']);
-            }
-        });
+        this.http.post<any>(`${baseUrl}/revoke-token`, {}, { withCredentials: true }).subscribe();
+        this.stopRefreshTokenTimer();
+        this.accountSubject.next(null);
+        this.router.navigate(['/account/login']);
     }
 
     refreshToken() {
-        return this.http.post<Account>(`${baseUrl}/refresh-token`, {}, { withCredentials: true })
+        return this.http.post<any>(`${baseUrl}/refresh-token`, {}, { withCredentials: true })
             .pipe(map((account) => {
                 this.accountSubject.next(account);
                 this.startRefreshTokenTimer();
@@ -70,30 +66,30 @@ export class AccountService {
         return this.http.post(`${baseUrl}/validate-reset-token`, { token });
     }
 
-    resetPassword({ token, password, confirmPassword }: any) {
+    resetPassword(token: string, password: string, confirmPassword: string) {
         return this.http.post(`${baseUrl}/reset-password`, { token, password, confirmPassword });
     }
 
-    getAll() {
+    getAll(): Observable<Account[]> {
         return this.http.get<Account[]>(baseUrl);
     }
 
-    getById(id: string) {
+    getById(id: string): Observable<Account> {
         return this.http.get<Account>(`${baseUrl}/${id}`);
     }
 
-    create(params: any) {
+    create(params: any): Observable<any> {
         return this.http.post(baseUrl, params);
     }
 
-    update(id: string, params: any) {
-        return this.http.put<Account>(`${baseUrl}/${id}`, params)
-            .pipe(map(account => {
+    update(id: string, params: any): Observable<Account> {
+        return this.http.put(`${baseUrl}/${id}`, params)
+            .pipe(map((account: Account) => {
                 // update the current account if it was updated
                 if (account.id === this.accountValue?.id) {
                     // publish updated account to subscribers
-                    account = { ...this.accountValue, ...account };
-                    this.accountSubject.next(account);
+                    const updatedAccount = { ...this.accountValue, ...account };
+                    this.accountSubject.next(updatedAccount);
                 }
                 return account;
             }));
@@ -101,16 +97,18 @@ export class AccountService {
 
     delete(id: string) {
         return this.http.delete(`${baseUrl}/${id}`)
-            .pipe(finalize(() => {
-                // auto logout if the logged in account was deleted
+            .pipe(map(x => {
+                // auto logout if the logged in account deleted their own record
                 if (id === this.accountValue?.id) {
                     this.logout();
                 }
+                return x;
             }));
     }
-    // helper methods
 
-    private refreshTokenTimeout;
+
+    // helper methods
+    private refreshTokenTimeout: any;
 
     private startRefreshTokenTimer() {
         // parse json object from base64 encoded jwt token
@@ -125,4 +123,5 @@ export class AccountService {
     private stopRefreshTokenTimer() {
         clearTimeout(this.refreshTokenTimeout);
     }
+
 }
