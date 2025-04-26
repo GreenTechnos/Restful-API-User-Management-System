@@ -8,7 +8,7 @@ enum EmailStatus {
     Verifying,
     Failed
 }
-
+// verify email
 @Component({ templateUrl: 'verify-email.component.html' })
 export class VerifyEmailComponent implements OnInit {
     EmailStatus = EmailStatus;
