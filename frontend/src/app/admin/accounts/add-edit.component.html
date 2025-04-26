@@ -2,6 +2,7 @@
 <h1 *ngIf="!isAddMode">Edit Account</h1>
 
 <form [formGroup]="form" (ngSubmit)="onSubmit()">
+    <!-- Title, First Name, Last Name Row -->
     <div class="form-row">
         <div class="form-group col">
             <label>Title</label>
@@ -17,7 +18,7 @@
                 <div *ngIf="f.title.errors.required">Title is required</div>
             </div>
         </div>
-        <div class="form-group col-5">
+        <div class="form-group col">
             <label>First Name</label>
             <input type="text" formControlName="firstName" class="form-control"
                 [ngClass]="{ 'is-invalid': submitted && f.firstName.errors }" />
@@ -25,7 +26,7 @@
                 <div *ngIf="f.firstName.errors.required">First Name is required</div>
             </div>
         </div>
-        <div class="form-group col-5">
+        <div class="form-group col">
             <label>Last Name</label>
             <input type="text" formControlName="lastName" class="form-control"
                 [ngClass]="{ 'is-invalid': submitted && f.lastName.errors }" />
@@ -34,8 +35,10 @@
             </div>
         </div>
     </div>
+
+    <!-- Email, Role, Status Row -->
     <div class="form-row">
-        <div class="form-group col-7">
+        <div class="form-group col">
             <label>Email</label>
             <input type="text" formControlName="email" class="form-control"
                 [ngClass]="{ 'is-invalid': submitted && f.email.errors }" />
@@ -48,7 +51,6 @@
             <label>Role</label>
             <select formControlName="role" class="form-control"
                 [ngClass]="{ 'is-invalid': submitted && f.role.errors }">
-                <option value=""></option>
                 <option value="User">User</option>
                 <option value="Admin">Admin</option>
             </select>
@@ -56,7 +58,20 @@
                 <div *ngIf="f.role.errors.required">Role is required</div>
             </div>
         </div>
+        <div class="form-group col">
+            <label>Status</label>
+            <select formControlName="status" class="form-control"
+                [ngClass]="{ 'is-invalid': submitted && f.status.errors }">
+                <option value="Inactive" selected>Inactive</option> <!-- 'selected' makes it default -->
+                <option value="Active">Active</option>
+            </select>
+            <div *ngIf="submitted && f.status.errors" class="invalid-feedback">
+                <div *ngIf="f.status.errors.required">Status is required</div>
+            </div>
+        </div>
     </div>
+
+    <!-- Password Section -->
     <div *ngIf="!isAddMode">
         <h3 class="pt-3">Change Password</h3>
         <p>Leave blank to keep the same password</p>
@@ -81,6 +96,8 @@
             </div>
         </div>
     </div>
+
+    <!-- Buttons -->
     <div class="form-group">
         <button [disabled]="loading" class="btn btn-primary">
             <span *ngIf="loading" class="spinner-border spinner-border-sm mr-1"></span>
