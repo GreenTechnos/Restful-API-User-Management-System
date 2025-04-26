@@ -32,6 +32,7 @@ export class AddEditComponent implements OnInit {
             lastName: ['', Validators.required],
             email: ['', [Validators.required, Validators.email]],
             role: ['', Validators.required],
+            status: ['Inactive', Validators.required],
             password: ['', [Validators.minLength(6), this.isAddMode ? Validators.required : Validators.nullValidator]],
             confirmPassword: ['']
         }, {
@@ -42,6 +43,8 @@ export class AddEditComponent implements OnInit {
             this.accountService.getById(this.id)
                 .pipe(first())
                 .subscribe(x => this.form.patchValue(x));
+
+                
         }
     }
 

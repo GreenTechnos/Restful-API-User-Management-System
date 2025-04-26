@@ -62,7 +62,7 @@
             <label>Status</label>
             <select formControlName="status" class="form-control"
                 [ngClass]="{ 'is-invalid': submitted && f.status.errors }">
-                <option value="Inactive" selected>Inactive</option> <!-- 'selected' makes it default -->
+                <option value="Inactive">Inactive</option> <!-- 'selected' makes it default -->
                 <option value="Active">Active</option>
             </select>
             <div *ngIf="submitted && f.status.errors" class="invalid-feedback">
