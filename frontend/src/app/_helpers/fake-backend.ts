@@ -58,33 +58,33 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         function authenticate() {
             const { email, password } = body;
             const account = accounts.find(x => x.email === email);
-        
+
             if (!account) {
                 return error('Email does not exist');
             }
-        
+
             if (!account.isVerified) {
                 return error('Email is not yet verified');
             }
-        
+
             if (account.password !== password) {
                 return error('Incorrect password');
             }
-        
-            if (account.status !== 'active') {
+
+            if (account.status !== 'Active') {
                 return error('Account is inactive. Please contact support.');
             }
-        
+
             account.refreshTokens.push(generateRefreshToken());
             localStorage.setItem(accountsKey, JSON.stringify(accounts));
-        
+
             return ok({
                 ...basicDetails(account),
                 jwtToken: generateJwtToken(account)
             });
         }
-        
-        
+
+
 
         function refreshToken() {
             const refreshToken = getRefreshToken();
@@ -144,10 +144,10 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             if (account.id === 1) {
                 // first registered account is an admin
                 account.role = Role.Admin;
-                account.status = 'active'; // Admin accounts get active status
+                account.status = 'Active'; // Admin accounts get active status
             } else {
                 account.role = Role.User;
-                account.status = 'inactive'; // User accounts get inacitve status upon creation
+                account.status = 'Inactive'; // User accounts get inacitve status upon creation
             }
             account.dateCreated = new Date().toISOString();
             account.verificationToken = new Date().getTime().toString();
@@ -272,7 +272,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
 
             // assign account id and a few other properties then save
             account.id = newAccountId();
-            account.status = 'inactive';
+            account.status = 'Inactive';
             account.dateCreated = new Date().toISOString();
             account.isVerified = true;
             account.refreshTokens = [];
@@ -346,7 +346,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             const { id, title, firstName, lastName, email, role, dateCreated, isVerified, status } = account;
             return { id, title, firstName, lastName, email, role, dateCreated, isVerified, status };
         }
-        
+
 
         function isAuthenticated() {
             return !!currentAccount();

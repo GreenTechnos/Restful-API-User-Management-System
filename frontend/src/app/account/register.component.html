@@ -6,11 +6,11 @@
                 <label>Title</label>
                 <select formControlName="title" class="form-control"
                     [ngClass]="{ 'is-invalid': submitted && f.title.errors }">
-                    <option value="%r"></option>
-                    <option value="%r">Mr</option>
-                    <option value="%r">Mrs</option>
-                    <option value="%r">Miss</option>
-                    <option value="%r">Ms</option>
+                    <option value=""></option>
+                    <option value="Mr">Mr</option>
+                    <option value="Mrs">Mrs</option>
+                    <option value="Miss">Miss</option>
+                    <option value="Ms">Ms</option>
                 </select>
                 <div *ngIf="submitted && f.title.errors" class="invalid-feedback">
                     <div *ngIf="f.title.errors.required">Title is required</div>
