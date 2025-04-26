@@ -7,6 +7,7 @@
         <tr>
             <th style="width:30%">Name</th>
             <th style="width:30%">Email</th>
+            <th style="width:30%">Status</th>
             <th style="width:30%">Role</th>
             <th style="width:10%"></th>
         </tr>
@@ -19,6 +20,11 @@
             <td>{{account.role}}</td>
             <td style="white-space: nowrap">
                 <a routerLink="edit/{{account.id}}" class="btn btn-sm btn-primary mr-1">Edit</a>
+                <!-- <button (click)="deleteAccount(account.id)" class="btn btn-sm btn-danger btn-delete-account"
+                    [disabled]="account.isDeleting">
+                    <span *ngIf="account.isDeleting" class="spinner-border spinner-border-sm"></span>
+                    <span *ngIf="!account.isDeleting">Delete</span>
+                </button> -->
             </td>
         </tr>
         <tr *ngIf="!accounts">
