@@ -26,8 +26,20 @@ module.exports = {
 async function authenticate({ email, password, ipAddress }) {
     const account = await db.Account.scope('withHash').findOne({ where: { email } });
 
-    if (!account || !account.isVerified || !(await bcrypt.compare(password, account.passwordHash))) {
-        throw 'Email or password is incorrect';
+    if (!account) {
+        throw 'Email does not exist';
+    }
+
+    if (!account.isVerified) {
+        throw 'Email is not verified';
+    }
+
+    if (account.status === 'Inactive') {
+        throw 'Account is inactive. Please contact administrator.';
+    }
+
+    if (!(await bcrypt.compare(password, account.passwordHash))) {
+        throw 'Password is incorrect';
     }
 
     // authentication successful so generate jwt and refresh tokens
@@ -87,9 +99,10 @@ async function register(params, origin) {
     // create account object
     const account = new db.Account(params);
 
-    // first registered account is an admin
+    // first registered account is an admin and active, others are user and inactive
     const isFirstAccount = (await db.Account.count()) === 0;
     account.role = isFirstAccount ? Role.Admin : Role.User;
+    account.status = isFirstAccount ? 'Active' : 'Inactive';
     account.verificationToken = randomTokenString();
 
     // hash password
@@ -167,6 +180,10 @@ async function create(params) {
         throw 'Email "' + params.email + '" is already registered';
     }
 
+    // set default values
+    params.role = params.role || Role.User;
+    params.status = params.status || 'Inactive';
+
     const account = new db.Account(params);
     account.verified = Date.now();
 
@@ -243,8 +260,8 @@ function randomTokenString() {
 }
 
 function basicDetails(account) {
-    const { id, title, firstName, lastName, email, role, created, updated, isVerified } = account;
-    return { id, title, firstName, lastName, email, role, created, updated, isVerified };
+    const { id, title, firstName, lastName, email, role, created, updated, isVerified, status } = account;
+    return { id, title, firstName, lastName, email, role, created, updated, isVerified, status };
 }
 
 async function sendVerificationEmail(account, origin) {
