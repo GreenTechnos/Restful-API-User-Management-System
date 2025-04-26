@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
 const validateRequest = require('_middleware/validate-request');
-const authorize = require('_middleware/authorize'); 
+const authorize = require('_middleware/authorize');
 const Role = require('_helpers/role');
 const accountService = require('./account.service');
 
@@ -19,7 +19,7 @@ router.get('/', authorize(Role.Admin), getAll);
 router.get('/:id', authorize(), getById);
 router.post('/', authorize(Role.Admin), createSchema, create);
 router.put('/:id', authorize(), updateSchema, update);
-router.delete('/:id', authorize(), _delete);
+
 
 module.exports = router;
 
@@ -39,7 +39,22 @@ function authenticate(req, res, next) {
             setTokenCookie(res, refreshToken);
             res.json(account);
         })
-        .catch(next);
+        .catch(error => {
+            if (error === 'Email does not exist') {
+                return res.status(400).json({ message: error });
+            }
+            if (error === 'Account not verified. Please check your email for verification instructions.') {
+                return res.status(400).json({
+                    message: error,
+                    verificationRequired: true,
+                    email: email
+                });
+            }
+            if (error === 'Password is incorrect') {
+                return res.status(400).json({ message: error });
+            }
+            next(error);
+        });
 }
 
 function refreshToken(req, res, next) {
@@ -175,7 +190,8 @@ function createSchema(req, res, next) {
         email: Joi.string().email().required(),
         password: Joi.string().min(6).required(),
         confirmPassword: Joi.string().valid(Joi.ref('password')).required(),
-        role: Joi.string().valid(Role.Admin, Role.User).required()
+        role: Joi.string().valid(Role.Admin, Role.User).default(Role.User),
+        status: Joi.string().valid('Active', 'Inactive').default('Inactive')
     });
     validateRequest(req, next, schema);
 }
@@ -193,7 +209,8 @@ function updateSchema(req, res, next) {
         lastName: Joi.string().empty(''),
         email: Joi.string().email().empty(''),
         password: Joi.string().min(6).empty(''),
-        confirmPassword: Joi.string().valid(Joi.ref('password')).empty('')
+        confirmPassword: Joi.string().valid(Joi.ref('password')).empty(''),
+        status: Joi.string().valid('Active', 'Inactive').empty('')
     };
 
     // only admins can update role
