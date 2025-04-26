@@ -4,7 +4,7 @@
     "port": 3306,
     "user": "root",
     "password": "",
-    "database": "managemeeeee"
+    "database": "management"
   },
   "secret": "E9g$2kL8#pXq5!RnW7vY4*zZb6@dF1jH3mPcQs",
   "emailFrom": "admin@gmail.com",
@@ -17,4 +17,3 @@
     }
   }
 }
-  

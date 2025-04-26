@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
 const validateRequest = require('_middleware/validate-request');
-const authorize = require('_middleware/authorize');
+const authorize = require('_middleware/authorize'); 
 const Role = require('_helpers/role');
 const accountService = require('./account.service');
 
@@ -44,7 +44,7 @@ function authenticate(req, res, next) {
                 return res.status(400).json({ message: error });
             }
             if (error === 'Account not verified. Please check your email for verification instructions.') {
-                return res.status(400).json({
+                return res.status(400).json({ 
                     message: error,
                     verificationRequired: true,
                     email: email
