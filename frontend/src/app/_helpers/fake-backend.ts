@@ -71,7 +71,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                 return error('Incorrect password');
             }
 
-            if (account.status !== 'Active') {
+            if (account.status !== 'Inative') {
                 return error('Account is inactive. Please contact support.');
             }
 
