@@ -144,10 +144,10 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             if (account.id === 1) {
                 // first registered account is an admin
                 account.role = Role.Admin;
-                account.status = 'active';
+                account.status = 'active'; // Admin accounts get active status
             } else {
                 account.role = Role.User;
-                account.status = 'inactive';
+                account.status = 'inactive'; // User accounts get inacitve status upon creation
             }
             account.dateCreated = new Date().toISOString();
             account.verificationToken = new Date().getTime().toString();
@@ -241,7 +241,6 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             localStorage.setItem(accountsKey, JSON.stringify(accounts));
 
             return ok();
-
         }
 
         function getAccounts() {
