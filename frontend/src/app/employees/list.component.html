@@ -1,0 +1,42 @@
+<div class="card">
+    <div class="card-header">Employees</div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Employee ID</th>
+                        <th>User</th>
+                        <th>Position</th>
+                        <th>Department</th>
+                        <th>Hire Date</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr *ngFor="let employee of employees">
+                        <td>{{employee.employeeId}}</td>
+                        <td>{{employee.user?.email}}</td>
+                        <td>{{employee.position}}</td>
+                        <td>{{employee.department?.name}}</td>
+                        <td>{{employee.hireDate | date:'shortDate'}}</td>
+                        <td>
+                            <span class="badge" [ngClass]="{'bg-success': employee.status === 'Active', 'bg-danger': employee.status !== 'Active'}">
+                                {{employee.status}}
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-info me-1" (click)="viewRequests(employee.id)">Requests</button>
+                            <button class="btn btn-sm btn-info me-1" (click)="viewWorkflows(employee.id)">Workflows</button>
+                            <button *ngIf="account()?.role === 'Admin'" class="btn btn-sm btn-warning me-1" (click)="transfer(employee.id)">Transfer</button>
+                            <button class="btn btn-sm btn-primary me-1" (click)="edit(employee.id)">Edit</button>
+                            <button *ngIf="account()?.role === 'Admin'" class="btn btn-sm btn-danger" (click)="delete(employee.id)">Delete</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <button *ngIf="account()?.role === 'Admin'" class="btn btn-primary float-end" (click)="add()">Add Employee</button>
+    </div>
+</div>
