@@ -77,8 +77,8 @@ export class RequestAddEditComponent implements OnInit {
       .pipe(first())
       .subscribe(
         () => {
-          this.router.navigate(['/requests'], { 
-            state: { message: 'Request created successfully' } 
+          this.router.navigate(['/requests'], {
+            state: { message: 'Request created successfully' }
           });
         },
         error => {
@@ -92,8 +92,8 @@ export class RequestAddEditComponent implements OnInit {
       .pipe(first())
       .subscribe(
         () => {
-          this.router.navigate(['/requests'], { 
-            state: { message: 'Request updated successfully' } 
+          this.router.navigate(['/requests'], {
+            state: { message: 'Request updated successfully' }
           });
         },
         error => {
