@@ -82,7 +82,81 @@ export class AccountService {
         return this.http.post(baseUrl, params);
     }
 
-    update(id: string, params: any): Observable<Account> {
+    // Add to AccountService
+    private departmentsUrl = `${environment.apiUrl}/departments`;
+
+    getDepartmentById(id: string): Observable<any> {
+        return this.http.get(`${this.departmentsUrl}/${id}`);
+    }
+
+    createDepartment(params: any): Observable<any> {
+        return this.http.post(this.departmentsUrl, params);
+    }
+
+    updateDepartment(id: string, params: any): Observable<any> {
+        return this.http.put(`${this.departmentsUrl}/${id}`, params);
+    }
+    getAllDepartments(): Observable<any[]> {
+    return this.http.get<any[]>(this.departmentsUrl);
+    }
+
+    deleteDepartment(id: string): Observable<any> {
+        return this.http.delete(`${this.departmentsUrl}/${id}`);
+    }
+
+        // Add to AccountService
+    private employeesUrl = `${environment.apiUrl}/employees`;
+
+    getAllUsers(): Observable<any[]> {
+        return this.http.get<any[]>(`${baseUrl}/users`);
+    }
+
+    getEmployeeById(id: string): Observable<any> {
+        return this.http.get(`${this.employeesUrl}/${id}`);
+    }
+
+    createEmployee(params: any): Observable<any> {
+        return this.http.post(this.employeesUrl, params);
+    }
+
+    updateEmployee(id: string, params: any): Observable<any> {
+        return this.http.put(`${this.employeesUrl}/${id}`, params);
+    }
+    deleteEmployee(id: string): Observable<any> {
+    return this.http.delete(`${this.employeesUrl}/${id}`);
+    }
+
+    private requestsUrl = `${environment.apiUrl}/requests`;
+
+    getRequestById(id: string): Observable<any> {
+        return this.http.get(`${this.requestsUrl}/${id}`);
+    }
+
+    createRequest(params: any): Observable<any> {
+        return this.http.post(this.requestsUrl, params);
+    }
+
+    updateRequest(id: string, params: any): Observable<any> {
+        return this.http.put(`${this.requestsUrl}/${id}`, params);
+    }
+    
+    getAllRequests(): Observable<any[]> {
+        return this.http.get<any[]>(this.requestsUrl);
+    }
+
+    deleteRequest(id: string): Observable<any> {
+        return this.http.delete(`${this.requestsUrl}/${id}`);
+    }
+    private workflowsUrl = `${environment.apiUrl}/workflows`;
+
+    getEmployeeWorkflows(employeeId: string): Observable<any[]> {
+        return this.http.get<any[]>(`${this.workflowsUrl}/employee/${employeeId}`);
+    }
+
+    updateWorkflowStatus(workflowId: string, params: any): Observable<any> {
+        return this.http.put(`${this.workflowsUrl}/${workflowId}/status`, params);
+    }
+        update(id: string, params: any): Observable<Account> {
         return this.http.put(`${baseUrl}/${id}`, params)
             .pipe(map((account: Account) => {
                 // update the current account if it was updated

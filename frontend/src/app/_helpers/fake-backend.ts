@@ -64,6 +64,16 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             }
 
             if (!account.isVerified) {
+                // Display verification email alert
+                setTimeout(() => {
+                    const verifyUrl = `${location.origin}/account/verify-email?token=${account.verificationToken}`;
+                    alertService.info(`
+                        <h4>Verification Email</h4>
+                        <p>Please click the below link to verify your email address:</p>
+                        <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+                    `, { autoClose: false });
+                }, 1000);
+
                 return error('Email is not yet verified');
             }
 
@@ -71,7 +81,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                 return error('Incorrect password');
             }
 
-            if (account.status !== 'Inative') {
+            if (account.status !== 'Active') {
                 return error('Account is inactive. Please contact support.');
             }
 
