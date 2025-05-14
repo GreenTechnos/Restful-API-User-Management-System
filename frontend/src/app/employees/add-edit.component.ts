@@ -45,19 +45,9 @@ export class AddEditEmployeeComponent implements OnInit {
     }
 
     loadUsers() {
-        console.log('Attempting to load users...');
         this.accountService.getAllUsers()
             .pipe(first())
-            .subscribe({
-                next: users => {
-                    console.log('Users successfully loaded:', users);
-                    this.users = users;
-                },
-                error: err => {
-                    console.error('Error loading users in AddEditEmployeeComponent:', err);
-                    this.alertService.error(err.error?.message || err.message || 'Failed to load users for dropdown');
-                }
-            });
+            .subscribe(users => this.users = users);
     }
 
     loadDepartments() {

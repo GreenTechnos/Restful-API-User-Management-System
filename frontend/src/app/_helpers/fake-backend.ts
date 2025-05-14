@@ -64,12 +64,17 @@ interface Workflow {
     datetimecreated?: string; // Example from a previous context if needed for sorting
 }
 
-interface AppRequest { // Renamed from 'RequestItem' to avoid conflict with HttpRequest
+export interface AppRequest { // Renamed from 'RequestItem' to avoid conflict with HttpRequest
     id: number;
-    employeeId: number;
+    employeeId: number | null;
     type: string;
     requestItems: { name: string; quantity: number }[];
     status: string;
+}
+
+export interface EmployeeForDropdown { // Simple interface for the dropdown
+    id: number;
+    employeeId: string; // The display ID like EMP001
 }
 
 // Key for localStorage

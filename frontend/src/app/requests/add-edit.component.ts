@@ -1,108 +1,184 @@
+// src/app/requests/add-edit.component.ts
+
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AccountService } from '@app/_services';
+import { FormBuilder, FormGroup, FormArray, Validators, AbstractControl } from '@angular/forms';
 import { first } from 'rxjs/operators';
+import { HttpErrorResponse } from '@angular/common/http';
+
+// Assuming you'll have dedicated services
+import { RequestService } from '@app/_services/request.service'; // Create this service
+import { EmployeeService } from '@app/_services/employee.service'; // Create or use existing
+import { AlertService } from '@app/_services/alert.service';
+
+import { AppRequest, EmployeeForDropdown } from '../_helpers/fake-backend'; // Adjust path to your models
 
 @Component({
-  templateUrl: 'add-edit.component.html'
+  templateUrl: 'add-edit.component.html',
+  // Add styleUrls if needed
 })
 export class RequestAddEditComponent implements OnInit {
-  id: string;
-  request: any = {
-    type: 'Equipment',
-    items: []
-  };
-  errorMessage: string;
-  isAddMode: boolean;
+  form!: FormGroup;
+  id: string | null = null;
+  isAddMode!: boolean;
+  loading = false;
+  submitted = false;
+
+  employees: EmployeeForDropdown[] = []; // For the employee dropdown
+
+  // For dynamic items, request.items will be managed by a FormArray
 
   constructor(
+    private formBuilder: FormBuilder,
     private route: ActivatedRoute,
     private router: Router,
-    private accountService: AccountService
+    private requestService: RequestService,     // Use RequestService
+    private employeeService: EmployeeService,   // Use EmployeeService
+    private alertService: AlertService
   ) { }
 
   ngOnInit() {
     this.id = this.route.snapshot.params['id'];
     this.isAddMode = !this.id;
 
-    if (!this.isAddMode) {
-      // Load existing request for editing
-      this.accountService.getRequestById(this.id)
-        .pipe(first())
-        .subscribe(
-          request => this.request = request,
-          error => this.errorMessage = error
-        );
+    // Initialize the form structure
+    this.form = this.formBuilder.group({
+      type: ['Equipment', Validators.required], // Default to 'Equipment'
+      employeeId: [null, Validators.required],  // Employee ID
+      requestItems: this.formBuilder.array([], Validators.required) // Array for items
+    });
+
+    this.loadEmployeesForDropdown(); // Load employees for the dropdown
+
+    if (!this.isAddMode && this.id) {
+      this.loadRequestData();
+    } else {
+      // For add mode, add one default item if desired
+      this.addItem();
     }
+  }
+
+  // Convenience getter for easy access to form fields in template
+  get f(): { [key: string]: AbstractControl } { return this.form.controls; }
+  // Convenience getter for requestItems FormArray
+  get requestItems(): FormArray {
+    return this.form.get('requestItems') as FormArray;
+  }
+
+  loadEmployeesForDropdown() {
+    this.employeeService.getAll() // Assuming getAll returns a list of employees
+      .pipe(first())
+      .subscribe({
+        next: (employees) => {
+          // Map to a simpler structure if needed, or use employees directly if they have id and a display name
+          this.employees = employees.map(emp => ({
+            id: Number(emp.id), // Convert ID to number
+            employeeId: emp.employeeId // The display ID like "EMP001"
+          }));
+        },
+        error: (err: HttpErrorResponse) => {
+          this.alertService.error(err.error?.message || err.message || 'Failed to load employees');
+        }
+      });
+  }
+
+  loadRequestData() {
+    if (!this.id) return;
+    this.loading = true;
+    this.requestService.getById(this.id) // Use RequestService
+      .pipe(first())
+      .subscribe(
+        (request: any) => {
+          this.form.patchValue({
+            type: request.type,
+            employeeId: request.employeeId
+          });
+          // Clear existing items and populate with fetched items
+          this.requestItems.clear();
+          request.requestItems.forEach((item: any) => {
+            this.requestItems.push(this.createItemFormGroup(item.name, item.quantity));
+          });
+          this.loading = false;
+        },
+        (err: HttpErrorResponse) => {
+          this.alertService.error(err.error?.message || err.message || 'Failed to load request');
+          this.loading = false;
+        }
+      );
+  }
+
+  createItemFormGroup(name: string = '', quantity: number = 1): FormGroup {
+    return this.formBuilder.group({
+      name: [name, Validators.required],
+      quantity: [quantity, [Validators.required, Validators.min(1)]]
+    });
   }
 
   addItem() {
-    this.request.items.push({ name: '', quantity: 1 });
+    this.requestItems.push(this.createItemFormGroup());
   }
 
   removeItem(index: number) {
-    this.request.items.splice(index, 1);
+    this.requestItems.removeAt(index);
   }
 
-  save() {
-    this.errorMessage = '';
+  onSubmit() {
+    this.submitted = true;
+    this.alertService.clear();
 
-    // Basic validation
-    if (!this.request.type) {
-      this.errorMessage = 'Type is required';
-      return;
-    }
-
-    if (this.request.items.length === 0) {
-      this.errorMessage = 'At least one item is required';
-      return;
-    }
-
-    for (const item of this.request.items) {
-      if (!item.name || !item.quantity) {
-        this.errorMessage = 'All items must have a name and quantity';
-        return;
+    if (this.form.invalid) {
+      // Mark all fields as touched to show validation errors
+      this.form.markAllAsTouched();
+      // If requestItems is empty after trying to submit, show specific error
+      if (this.requestItems.length === 0 && this.form.get('requestItems')?.hasError('required')) {
+        this.alertService.error('At least one item is required.');
       }
+      return;
     }
+
+    if (this.loading) return;
+
+    this.loading = true;
+    const requestData: AppRequest = this.form.value as AppRequest;
 
     if (this.isAddMode) {
-      this.createRequest();
-    } else {
-      this.updateRequest();
+      this.createRequest(requestData);
+    } else if (this.id) {
+      this.updateRequest(this.id, requestData);
     }
   }
 
-  private createRequest() {
-    this.accountService.createRequest(this.request)
+  private createRequest(requestData: AppRequest) {
+    this.requestService.create(requestData) // Use RequestService
       .pipe(first())
-      .subscribe(
-        () => {
-          this.router.navigate(['/requests'], {
-            state: { message: 'Request created successfully' }
-          });
+      .subscribe({
+        next: () => {
+          this.alertService.success('Request created successfully', { keepAfterRouteChange: true });
+          this.router.navigate(['/admin/requests']); // Adjust path as needed
         },
-        error => {
-          this.errorMessage = error.error?.message || error.message;
+        error: (err: HttpErrorResponse) => {
+          this.alertService.error(err.error?.message || err.message || 'Failed to create request');
+          this.loading = false;
         }
-      );
+      });
   }
 
-  private updateRequest() {
-    this.accountService.updateRequest(this.id, this.request)
+  private updateRequest(id: string, requestData: AppRequest) {
+    this.requestService.update(id, requestData) // Use RequestService
       .pipe(first())
-      .subscribe(
-        () => {
-          this.router.navigate(['/requests'], {
-            state: { message: 'Request updated successfully' }
-          });
+      .subscribe({
+        next: () => {
+          this.alertService.success('Request updated successfully', { keepAfterRouteChange: true });
+          this.router.navigate(['/admin/requests']); // Adjust path as needed
         },
-        error => {
-          this.errorMessage = error.error?.message || error.message;
+        error: (err: HttpErrorResponse) => {
+          this.alertService.error(err.error?.message || err.message || 'Failed to update request');
+          this.loading = false;
         }
-      );
+      });
   }
 
-  cancel() {
-    this.router.navigate(['/requests']);
+  onCancel() {
+    this.router.navigate(['/admin/requests']); // Adjust path as needed
   }
 }
