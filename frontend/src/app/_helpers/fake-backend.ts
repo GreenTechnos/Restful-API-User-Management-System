@@ -163,6 +163,11 @@ export class FakeBackendInterceptor implements HttpInterceptor {
 
             // --- OTHER ENTITY ROUTES ---
             // Employees
+            case url.endsWith('/accounts/users') && method === 'GET':
+                return this.authorize(headers, null, () => {
+                    const usersToReturn = this.accounts.map(acc => this.basicDetails(acc));
+                    return this.ok(usersToReturn);
+                });
             case url.endsWith('/employees') && method === 'GET':
                 return this.authorize(headers, null, () => this.ok(this.employees));
             case url.endsWith('/employees') && method === 'POST':

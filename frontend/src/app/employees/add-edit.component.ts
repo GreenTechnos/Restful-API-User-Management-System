@@ -5,7 +5,7 @@ import { AccountService } from '@app/_services/account.service';
 import { AlertService } from '@app/_services/alert.service';
 
 @Component({
-  templateUrl: 'add-edit.component.html'
+    templateUrl: 'add-edit.component.html'
 })
 export class AddEditEmployeeComponent implements OnInit {
     employee: any = {
@@ -45,9 +45,19 @@ export class AddEditEmployeeComponent implements OnInit {
     }
 
     loadUsers() {
+        console.log('Attempting to load users...');
         this.accountService.getAllUsers()
             .pipe(first())
-            .subscribe(users => this.users = users);
+            .subscribe({
+                next: users => {
+                    console.log('Users successfully loaded:', users);
+                    this.users = users;
+                },
+                error: err => {
+                    console.error('Error loading users in AddEditEmployeeComponent:', err);
+                    this.alertService.error(err.error?.message || err.message || 'Failed to load users for dropdown');
+                }
+            });
     }
 
     loadDepartments() {
