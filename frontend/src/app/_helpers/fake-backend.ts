@@ -180,20 +180,43 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                     return employee ? this.ok(employee) : this.error('Employee not found', 404);
                 });
             }
+            // In FakeBackendInterceptor, within the handleRoute method:
             case url.match(/\/employees\/(\d+)$/) && method === 'PUT': {
-                const id = this.idFromUrl(url);
+                const id = this.idFromUrl(url); // This is the employee's ID (number)
+                console.log(`PUT /employees/${id} - Request Body:`, JSON.stringify(body));
                 return this.authorize(headers, Role.Admin, () => {
                     const employeeIndex = this.employees.findIndex(e => e.id === id);
                     if (employeeIndex === -1) return this.error('Employee not found', 404);
+
                     const oldEmployeeData = this.employees[employeeIndex];
+                    // Create updatedEmployee, ensuring body properties are merged
                     const updatedEmployee = { ...oldEmployeeData, ...body, id };
+
+                    // Ensure the departmentId from the body is treated as a number for comparison
+                    const targetDepartmentIdFromBody = updatedEmployee.departmentId !== undefined && updatedEmployee.departmentId !== null
+                        ? parseInt(String(updatedEmployee.departmentId), 10)
+                        : undefined;
+
+                    // Update departmentId on the employee object IF it was provided in the body
+                    if (targetDepartmentIdFromBody !== undefined && !isNaN(targetDepartmentIdFromBody)) {
+                        updatedEmployee.departmentId = targetDepartmentIdFromBody;
+                    }
+
+
                     if (oldEmployeeData.departmentId !== updatedEmployee.departmentId) {
                         const oldDept = this.departments.find(d => d.id === oldEmployeeData.departmentId);
                         if (oldDept) oldDept.employeeCount = Math.max(0, oldDept.employeeCount - 1);
+
+                        // Now updatedEmployee.departmentId should be a number if it was valid
                         const newDept = this.departments.find(d => d.id === updatedEmployee.departmentId);
-                        if (newDept) newDept.employeeCount++;
-                        else return this.error('Target department not found', 400);
+                        if (newDept) {
+                            newDept.employeeCount++;
+                        } else if (updatedEmployee.departmentId !== oldEmployeeData.departmentId) {
+                            // Only error if a new, non-existent departmentId was attempted
+                            return this.error(`Target department with id '${updatedEmployee.departmentId}' not found`, 400);
+                        }
                     }
+
                     this.employees[employeeIndex] = updatedEmployee;
                     return this.ok(this.employees[employeeIndex]);
                 });
