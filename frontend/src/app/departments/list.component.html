@@ -17,13 +17,14 @@
                         <td>{{dept.description}}</td>
                         <td>{{dept.employeeCount}}</td>
                         <td>
-                            <button class="btn btn-sm btn-primary me-1" (click)="edit(dept.id)">Edit</button>
-                            <button *ngIf="account()?.role === 'Admin'" class="btn btn-sm btn-danger" (click)="delete(dept.id)">Delete</button>
+                            <button class="btn btn-sm btn-primary me-1" [routerLink]="['edit', dept.id]">Edit</button>
+                            <button *ngIf="account()?.role === 'Admin'" class="btn btn-sm btn-danger"
+                                (click)="delete(dept.id)">Delete</button>
                         </td>
                     </tr>
                 </tbody>
             </table>
         </div>
-        <button *ngIf="account()?.role === 'Admin'" class="btn btn-primary float-end" (click)="add()">Add Department</button>
+        <button *ngIf="isAdmin" class="btn btn-primary float-end" routerLink="add">Add Department</button>
     </div>
-</div>  
+</div>

@@ -1,54 +1,162 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { AccountService } from '@app/_services';
 import { first } from 'rxjs/operators';
 
-@Component({
-  templateUrl: 'list.component.html'
-})
-export class WorkflowsComponent implements OnInit {
-  employeeId: string;
-  workflows: any[] = [];
-  account = this.accountService.accountValue;
+import { WorkflowService, AlertService, AccountService, EmployeeService } from '@app/_services';
+import { Account, Role } from '@app/_models';
+import { WorkflowStatus } from '@app/_models/workflow';
+import { ConfirmModalComponent } from './confirm-modal.component';
+
+@Component({ templateUrl: 'list.component.html' })
+export class ListWorkflowComponent implements OnInit {
+  @ViewChild('confirmModal') confirmModal!: ConfirmModalComponent;
+  workflows = null;
+  loading = false;
+  isAdmin = false;
+  employeeId: string | null = null;
+  displayEmployeeId: string | null = null;
+  employeeFullName: string | null = null;
+  confirmMessage: string = '';
+  notFound = false;
+  private pendingStatusChange: { id: string; status: WorkflowStatus } | null = null;
+
+  // Make enum available in template
+  WorkflowStatus = WorkflowStatus;
 
   constructor(
-    private route: ActivatedRoute,
-    private accountService: AccountService
-  ) { }
+    private workflowService: WorkflowService,
+    private alertService: AlertService,
+    private accountService: AccountService,
+    private employeeService: EmployeeService,
+    private route: ActivatedRoute
+  ) {
+    this.isAdmin = this.accountService.accountValue?.role === Role.Admin;
+
+    // Get employeeId from query params
+    this.route.queryParams.subscribe(params => {
+      this.employeeId = params['employeeid'];
+      if (this.employeeId) {
+        this.loadEmployee();
+        this.loadWorkflows();
+      } else {
+        this.notFound = false;
+        this.loadWorkflows();
+      }
+    });
+  }
 
   ngOnInit() {
-    this.employeeId = this.route.snapshot.params['id'];
     this.loadWorkflows();
   }
 
-  private loadWorkflows() {
-    this.accountService.getEmployeeWorkflows(this.employeeId)
-      .pipe(first())
-      .subscribe(
-        workflows => {
-          this.workflows = workflows;
-          // Initialize status for each workflow if not present
-          this.workflows.forEach(w => w.status = w.status || 'Pending');
-        },
-        error => console.error('Failed to load workflows', error)
-      );
+  public get currentAccount(): Account | null {
+    return this.accountService.accountValue;
   }
 
-  updateStatus(workflow: any) {
-    if (!workflow.id || !workflow.status) return;
+  private loadEmployee() {
+    if (!this.employeeId) return;
 
-    this.accountService.updateWorkflowStatus(workflow.id, { status: workflow.status })
+    this.employeeService.getById(this.employeeId)
       .pipe(first())
-      .subscribe(
-        () => {
-          // Optional: Show success message
-          console.log('Workflow status updated successfully');
+      .subscribe({
+        next: (employee) => {
+          if (employee && employee.account) {
+            this.displayEmployeeId = employee.employeeId;
+            const firstName = employee.account.firstName.charAt(0).toUpperCase() + employee.account.firstName.slice(1).toLowerCase();
+            const lastName = employee.account.lastName.charAt(0).toUpperCase() + employee.account.lastName.slice(1).toLowerCase();
+            this.employeeFullName = `${firstName} ${lastName}`;
+          }
         },
-        error => {
-          console.error('Failed to update workflow status', error);
-          // Revert the status change in UI if update fails
-          this.loadWorkflows(); // Reload to ensure consistency
+        error: error => {
+          this.alertService.error(error);
         }
-      );
+      });
   }
-}
+
+  private loadWorkflows() {
+    this.loading = true;
+    let request;
+
+    if (this.employeeId) {
+      request = this.workflowService.getByEmployeeId(this.employeeId);
+    } else {
+      request = this.workflowService.getAll();
+    }
+
+    request.pipe(first())
+      .subscribe({
+        next: (workflows: any) => {
+          // Sort workflows by date in descending order
+          this.workflows = workflows.sort((a: any, b: any) => {
+            const dateA = new Date(a.datetimecreated).getTime();
+            const dateB = new Date(b.datetimecreated).getTime();
+            return dateB - dateA;
+          });
+          this.loading = false;
+          this.notFound = false;
+        },
+        error: error => {
+          if (error.status === 404) {
+            this.notFound = true;
+          }
+          this.alertService.error(error);
+          this.loading = false;
+        }
+      });
+  }
+
+  openStatusChangeModal(id: string, status: WorkflowStatus) {
+    const workflow = this.workflows.find(x => x.id === id);
+    if (!workflow) return;
+
+    this.pendingStatusChange = { id, status };
+    this.confirmMessage = `Are you sure you want to mark this workflow ${status === WorkflowStatus.ForReviewing ? 'for review' : 'as completed'}?`;
+    this.confirmModal.show();
+  }
+
+  onStatusChangeConfirmed() {
+    if (!this.pendingStatusChange) return;
+
+    const { id, status } = this.pendingStatusChange;
+    const workflow = this.workflows.find(x => x.id === id);
+    if (!workflow) return;
+
+    workflow.isUpdating = true;
+    this.workflowService.changeStatus(id, status)
+      .pipe(first())
+      .subscribe({
+        next: () => {
+          workflow.status = status;
+          workflow.isUpdating = false;
+          this.alertService.success('Workflow status updated successfully');
+        },
+        error: error => {
+          this.alertService.error(error);
+          workflow.isUpdating = false;
+        }
+      });
+
+    this.pendingStatusChange = null;
+  }
+
+  deleteWorkflow(id: string) {
+    const workflow = this.workflows.find(x => x.id === id);
+    if (!workflow) return;
+
+    if (confirm('Are you sure you want to delete this workflow?')) {
+      workflow.isDeleting = true;
+      this.workflowService.delete(id)
+        .pipe(first())
+        .subscribe({
+          next: () => {
+            this.workflows = this.workflows.filter(x => x.id !== id);
+            this.alertService.success('Workflow deleted successfully');
+          },
+          error: error => {
+            this.alertService.error(error);
+            workflow.isDeleting = false;
+          }
+        });
+    }
+  }
+} 

@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { AccountService } from '@app/_services';
 import { first } from 'rxjs/operators';
 
+
 @Component({
   selector: 'app-employee-transfer',
   templateUrl: './transfer.component.html'
@@ -20,7 +21,7 @@ export class TransferComponent implements OnInit {
 
   ngOnInit() {
     const id = this.route.snapshot.params['id'];
-    
+
     // Load employee details
     this.accountService.getEmployeeById(id)
       .pipe(first())
@@ -37,14 +38,14 @@ export class TransferComponent implements OnInit {
 
   transfer() {
     if (!this.departmentId) return;
-    
-    this.accountService.updateEmployee(this.employee.id, { 
-      departmentId: this.departmentId 
+
+    this.accountService.updateEmployee(this.employee.id, {
+      departmentId: this.departmentId
     })
       .pipe(first())
       .subscribe(() => {
-        this.router.navigate(['/employees'], { 
-          state: { message: 'Employee transferred successfully' } 
+        this.router.navigate(['/employees'], {
+          state: { message: 'Employee transferred successfully' }
         });
       });
   }
