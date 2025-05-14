@@ -12,9 +12,6 @@ import { AppComponent } from './app.component';
 import { AlertComponent } from './_components';
 import { HomeComponent } from './home';
 import { FormsModule } from '@angular/forms';
-import { AddEditEmployeeComponent } from './employees/add-edit.component';
-import { AddEditDepartmentComponent } from './departments/add-edit.component';
-import { RequestAddEditComponent } from './requests/add-edit.component';
 import { TransferComponent } from './employees/transfer.component';
 
 
@@ -30,9 +27,6 @@ import { TransferComponent } from './employees/transfer.component';
   ],
   declarations: [
     TransferComponent,
-    RequestAddEditComponent,
-    AddEditDepartmentComponent,
-    AddEditEmployeeComponent,
     AppComponent,
     AlertComponent,
     HomeComponent

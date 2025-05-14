@@ -59,6 +59,8 @@ interface Workflow {
     type: string;
     details: any;
     status: string;
+    // Optional: Add a creation timestamp if you want to sort by it
+    datetimecreated?: string; // Example from a previous context if needed for sorting
 }
 
 interface AppRequest { // Renamed from 'RequestItem' to avoid conflict with HttpRequest
@@ -87,7 +89,8 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         { id: 2, name: 'Marketing', description: 'Marketing team', employeeCount: 1 }
     ];
     private workflows: Workflow[] = [
-        { id: 1, employeeId: 1, type: 'Onboarding', details: { task: 'Setup workstation' }, status: 'Pending' }
+        { id: 1, employeeId: 1, type: 'Onboarding', details: { task: 'Setup workstation' }, status: 'Pending', datetimecreated: new Date(Date.now() - 100000).toISOString() },
+        { id: 2, employeeId: 2, type: 'Offboarding', details: { task: 'Return equipment' }, status: 'Completed', datetimecreated: new Date(Date.now() - 200000).toISOString() }
     ];
     private appRequests: AppRequest[] = [
         { id: 1, employeeId: 2, type: 'Equipment', requestItems: [{ name: 'Laptop', quantity: 1 }], status: 'Pending' }
@@ -226,7 +229,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                     employee.departmentId = newDepartmentId;
                     this.workflows.push({
                         id: this.nextWorkflowId++, employeeId: id, type: 'Transfer',
-                        details: body, status: 'Pending'
+                        details: body, status: 'Pending', datetimecreated: new Date().toISOString()
                     });
                     return this.ok({ message: 'Employee transferred successfully', employee });
                 });
@@ -267,21 +270,36 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                 const idMatch = url.match(/\/workflows\/employee\/(\d+)$/);
                 if (!idMatch) return this.error('Invalid URL for employee workflows', 400);
                 const employeeId = parseInt(idMatch[1]);
-                return this.authorize(headers, null, () => { // Or specific role if needed
+                return this.authorize(headers, null, () => {
                     const workflows = this.workflows.filter(w => w.employeeId === employeeId);
                     return this.ok(workflows);
                 });
             }
             case url.endsWith('/workflows') && method === 'POST':
-                return this.authorize(headers, Role.Admin, () => { // Or more specific role
-                    const newWorkflow: Workflow = { id: this.nextWorkflowId++, ...body };
+                return this.authorize(headers, Role.Admin, () => {
+                    const newWorkflow: Workflow = {
+                        id: this.nextWorkflowId++,
+                        ...body,
+                        datetimecreated: new Date().toISOString() // Add timestamp on creation
+                    };
                     this.workflows.push(newWorkflow);
                     return this.ok(newWorkflow, 201);
+                });
+            // *** ADDED HANDLER FOR GET /workflows ***
+            case url.endsWith('/workflows') && method === 'GET':
+                return this.authorize(headers, Role.Admin, () => { // Or null if all users can see all workflows
+                    // Optional: sort workflows if not already handled by client or a specific query param
+                    const sortedWorkflows = [...this.workflows].sort((a, b) => {
+                        const dateA = new Date(a.datetimecreated || 0).getTime();
+                        const dateB = new Date(b.datetimecreated || 0).getTime();
+                        return dateB - dateA; // Descending
+                    });
+                    return this.ok(sortedWorkflows);
                 });
 
             // AppRequests
             case url.endsWith('/requests') && method === 'GET':
-                return this.authorize(headers, null, () => { // Allow users to see their requests or admin to see all
+                return this.authorize(headers, null, () => {
                     const currentAcc = this.currentAccount(headers);
                     if (!currentAcc) return this.unauthorized();
                     if (currentAcc.role === Role.Admin) return this.ok(this.appRequests);
@@ -293,7 +311,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                     return this.ok(userRequests);
                 });
             case url.endsWith('/requests') && method === 'POST':
-                return this.authorize(headers, null, () => { // Allow authenticated users to create requests
+                return this.authorize(headers, null, () => {
                     const currentAcc = this.currentAccount(headers);
                     if (!currentAcc || !currentAcc.employeeId) return this.error("User not linked to an employee or not authenticated.", 400);
 
@@ -316,7 +334,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         const { email, password } = body;
         const account = this.accounts.find(x => x.email === email);
 
-        if (!account) return this.error('Invalid email or password.', 400); // Generic message
+        if (!account) return this.error('Invalid email or password.', 400);
         if (!account.isVerified) {
             setTimeout(() => {
                 const verifyUrl = `${location.origin}/account/verify-email?token=${account.verificationToken}`;
@@ -324,7 +342,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             }, 1000);
             return this.error('Email is not yet verified. Please check your inbox.', 400);
         }
-        if (account.password !== password) return this.error('Invalid email or password.', 400); // Generic message
+        if (account.password !== password) return this.error('Invalid email or password.', 400);
         if (account.status !== 'Active') return this.error('Account is inactive. Please contact support.', 400);
 
         account.refreshTokens = account.refreshTokens || [];
@@ -349,8 +367,8 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         const account = this.accounts.find(x => x.refreshTokens && x.refreshTokens.includes(requestRefreshToken));
         if (!account) return this.unauthorized('Invalid or expired refresh token.');
 
-        account.refreshTokens = account.refreshTokens.filter(x => x !== requestRefreshToken); // Remove old
-        account.refreshTokens.push(this.generateRefreshTokenForCookie()); // Add new (rotation)
+        account.refreshTokens = account.refreshTokens.filter(x => x !== requestRefreshToken);
+        account.refreshTokens.push(this.generateRefreshTokenForCookie());
         this.saveAccounts();
 
         return this.ok({
@@ -363,14 +381,13 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         const currentAcc = this.currentAccount(headers);
         if (!currentAcc) return this.unauthorized();
 
-        const tokenToRevoke = body.token || this.getRefreshTokenFromCookie(); // Token from body or current cookie
+        const tokenToRevoke = body.token || this.getRefreshTokenFromCookie();
         const account = this.accounts.find(x => x.id === currentAcc.id);
 
         if (account && account.refreshTokens && tokenToRevoke) {
             account.refreshTokens = account.refreshTokens.filter(x => x !== tokenToRevoke);
             this.saveAccounts();
         }
-        // Clear cookie if it was the one revoked
         if (tokenToRevoke && tokenToRevoke === this.getRefreshTokenFromCookie()) {
             this.clearRefreshTokenCookie();
         }
@@ -378,7 +395,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
     }
 
     private register(body: any): Observable<HttpEvent<any>> {
-        const newAccountData = body as Partial<Account>; // Use Partial for incoming data
+        const newAccountData = body as Partial<Account>;
 
         if (!newAccountData.email || !newAccountData.password) {
             return this.error('Email and password are required.', 400);
@@ -391,15 +408,15 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         const newAccount: Account = {
             id: this.newAccountId(),
             email: newAccountData.email,
-            password: newAccountData.password, // Store as is for fake backend
-            role: this.accounts.length === 0 ? Role.Admin : Role.User, // First user is Admin
+            password: newAccountData.password,
+            role: this.accounts.length === 0 ? Role.Admin : Role.User,
             firstName: newAccountData.firstName || '',
             lastName: newAccountData.lastName || '',
             title: newAccountData.title || '',
-            status: this.accounts.length === 0 ? 'Active' : 'Inactive', // First user active, others inactive
+            status: this.accounts.length === 0 ? 'Active' : 'Inactive',
             dateCreated: new Date().toISOString(),
             verificationToken: `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`,
-            isVerified: this.accounts.length === 0, // First user is auto-verified
+            isVerified: this.accounts.length === 0,
             refreshTokens: []
         };
 
@@ -438,14 +455,13 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         const account = this.accounts.find(x => x.email === email);
         if (account) {
             account.resetToken = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
-            account.resetTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // Expires in 24 hours
+            account.resetTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
             this.saveAccounts();
             setTimeout(() => {
                 const resetUrl = `${location.origin}/account/reset-password?token=${account.resetToken}`;
                 this.alertService.info(`<h4>Reset Password Email</h4><p>Please click the link to reset your password: <a href="${resetUrl}">${resetUrl}</a></p><p>The link will be valid for 24 hours.</p><div><strong>NOTE:</strong> This is a fake email.</div>`, { autoClose: false });
             }, 1000);
         }
-        // Always return OK to prevent email enumeration
         return this.ok({ message: 'If your email address is registered, you will receive a password reset link.' });
     }
 
@@ -463,8 +479,8 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         const account = this.accounts.find(x => x.resetToken === token && x.resetTokenExpires && new Date(x.resetTokenExpires) > new Date());
         if (!account) return this.error('Invalid or expired reset token.', 400);
 
-        account.password = password; // In a real app, hash this
-        account.isVerified = true; // Good to ensure
+        account.password = password;
+        account.isVerified = true;
         account.status = 'Active';
         delete account.resetToken;
         delete account.resetTokenExpires;
@@ -509,10 +525,10 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                 lastName: newAccountData.lastName || '',
                 title: newAccountData.title || '',
                 dateCreated: new Date().toISOString(),
-                isVerified: true, // Admin created accounts are auto-verified
-                status: 'Active', // Admin created accounts are auto-active
+                isVerified: true,
+                status: 'Active',
                 refreshTokens: [],
-                employeeId: newAccountData.employeeId // Optional
+                employeeId: newAccountData.employeeId
             };
             this.accounts.push(newAccount);
             this.saveAccounts();
@@ -533,16 +549,13 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         }
 
         const updateData = { ...body } as Partial<Account>;
-        // Prevent role change by non-admin for self
         if (currentAcc.id === accountToUpdate.id && currentAcc.role !== Role.Admin && updateData.role && updateData.role !== accountToUpdate.role) {
             return this.error("You cannot change your own role.", 403);
         }
 
-        // Only update password if a new one is provided
         if (updateData.password) {
             accountToUpdate.password = updateData.password;
         }
-        // Update other fields
         ['firstName', 'lastName', 'title', 'email', 'role', 'status', 'employeeId'].forEach(field => {
             if (updateData[field] !== undefined) {
                 accountToUpdate[field] = updateData[field];
@@ -566,14 +579,12 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         if (currentAcc.role !== Role.Admin && currentAcc.id !== accountToDelete.id) {
             return this.unauthorized("You are not authorized to delete this account.");
         }
-        // Prevent self-deletion if last admin
         if (accountToDelete.id === currentAcc.id && accountToDelete.role === Role.Admin && this.accounts.filter(a => a.role === Role.Admin).length <= 1) {
             return this.error("Cannot delete the last admin account.", 400);
         }
 
         this.accounts.splice(accountIndex, 1);
         this.saveAccounts();
-        // Also clear cookie if self-deleted
         if (accountToDelete.id === currentAcc.id) {
             this.clearRefreshTokenCookie();
         }
@@ -602,16 +613,15 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         const authHeader = headers.get('Authorization');
         if (!authHeader || !authHeader.startsWith('Bearer ')) return undefined;
 
-        const token = authHeader.substring(7); // "Bearer ".length
+        const token = authHeader.substring(7);
         try {
-            // Assuming format: header.payload.signature (we only care about payload)
             const payloadB64 = token.split('.')[1];
             if (!payloadB64) return undefined;
 
             const tokenPayload = JSON.parse(atob(payloadB64));
             if (Date.now() >= tokenPayload.exp * 1000) {
                 console.warn("Fake backend: JWT token expired");
-                this.clearRefreshTokenCookie(); // Token expired, clear associated refresh token
+                this.clearRefreshTokenCookie();
                 return undefined;
             }
             return this.accounts.find(x => x.id === tokenPayload.id);
@@ -649,8 +659,8 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         const payload = {
             id: account.id,
             role: account.role,
-            email: account.email, // Good to include for display/reference
-            exp: Math.floor(new Date(Date.now() + 15 * 60 * 1000).getTime() / 1000), // 15 minutes
+            email: account.email,
+            exp: Math.floor(new Date(Date.now() + 15 * 60 * 1000).getTime() / 1000),
         };
         const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
         const encodedPayload = btoa(JSON.stringify(payload));
@@ -659,10 +669,8 @@ export class FakeBackendInterceptor implements HttpInterceptor {
 
     private generateRefreshTokenForCookie(): string {
         const token = `${Date.now()}-${Math.random().toString(36).substring(2, 12)}`;
-        const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString(); // 7 days
+        const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString();
         if (typeof document !== 'undefined') {
-            // For a fake backend, HttpOnly isn't strictly enforceable by client-side JS,
-            // but SameSite=Lax is good practice.
             document.cookie = `fakeRefreshToken=${token}; expires=${expires}; path=/; SameSite=Lax`;
         }
         return token;
