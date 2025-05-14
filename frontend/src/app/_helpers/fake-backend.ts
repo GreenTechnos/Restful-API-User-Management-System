@@ -364,15 +364,15 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         const { email, password } = body;
         const account = this.accounts.find(x => x.email === email);
 
-        if (!account) return this.error('Invalid email or password.', 400);
+        if (!account) return this.error('Email does not exist', 400);
         if (!account.isVerified) {
             setTimeout(() => {
                 const verifyUrl = `${location.origin}/account/verify-email?token=${account.verificationToken}`;
                 this.alertService.info(`<h4>Verification Email</h4><p>Please click the link to verify: <a href="${verifyUrl}">${verifyUrl}</a></p>`, { autoClose: false });
             }, 1000);
-            return this.error('Email is not yet verified. Please check your inbox.', 400);
+            return this.error('Email is not yet verified.', 400);
         }
-        if (account.password !== password) return this.error('Invalid email or password.', 400);
+        if (account.password !== password) return this.error('Incorrect password.', 400);
         if (account.status !== 'Active') return this.error('Account is inactive. Please contact support.', 400);
 
         account.refreshTokens = account.refreshTokens || [];
@@ -431,7 +431,16 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             return this.error('Email and password are required.', 400);
         }
         if (this.accounts.find(x => x.email === newAccountData.email)) {
-            setTimeout(() => this.alertService.error(`Email '${newAccountData.email}' is already registered.`), 1000);
+            setTimeout(() => {
+                this.alertService.info(`
+                        <h4>Email Already Registered</h4>
+                        <p>Your email ${newAccountData.email} is already registered.</p>
+                        <p>If you don't know your password please visit the <a href="${location.origin}/account/forgot-password">forgot password</a> page.</p>
+                        <div>
+                        <strong>NOTE:</strong> The fake backend displayed this "email" so you can test without an API. A real backend would send a real email.
+                        </div>
+                    `, { autoclose: false });
+            }, 1000);
             return this.error(`Email '${newAccountData.email}' is already registered.`, 400);
         }
 
@@ -467,7 +476,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         if (!token) return this.error('Verification token is required.', 400);
 
         const account = this.accounts.find(x => x.verificationToken === token);
-        if (!account) return this.error('Verification failed. Invalid or expired token.', 400);
+        if (!account) return this.error('Verification failed.', 400);
         if (account.isVerified) return this.ok({ message: 'Email already verified.' });
 
 
