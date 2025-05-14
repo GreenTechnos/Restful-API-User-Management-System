@@ -12,7 +12,6 @@ import { AppComponent } from './app.component';
 import { AlertComponent } from './_components';
 import { HomeComponent } from './home';
 import { FormsModule } from '@angular/forms';
-import { TransferComponent } from './employees/transfer.component';
 
 
 
@@ -26,7 +25,6 @@ import { TransferComponent } from './employees/transfer.component';
     AppRoutingModule
   ],
   declarations: [
-    TransferComponent,
     AppComponent,
     AlertComponent,
     HomeComponent

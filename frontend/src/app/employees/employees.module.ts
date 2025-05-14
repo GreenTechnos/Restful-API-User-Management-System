@@ -6,6 +6,7 @@ import { RouterModule } from '@angular/router';
 import { LayoutComponent } from './layout.component';
 import { ListComponent } from './list.component';
 import { AddEditEmployeeComponent } from './add-edit.component';
+import { TransferComponent } from './transfer.component';
 
 const routes = [
     {
@@ -13,7 +14,8 @@ const routes = [
         children: [
             { path: '', component: ListComponent },
             { path: 'add', component: AddEditEmployeeComponent },
-            { path: 'edit/:id', component: AddEditEmployeeComponent }
+            { path: 'edit/:id', component: AddEditEmployeeComponent },
+            { path: 'transfer/:id', component: TransferComponent }
         ]
     }
 ];
@@ -26,6 +28,7 @@ const routes = [
         RouterModule.forChild(routes)
     ],
     declarations: [
+        TransferComponent,
         LayoutComponent,
         ListComponent,
         AddEditEmployeeComponent

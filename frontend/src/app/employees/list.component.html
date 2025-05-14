@@ -6,7 +6,7 @@
                 <thead>
                     <tr>
                         <th>Employee ID</th>
-                        <th>User</th>
+                        <th>Account</th>
                         <th>Position</th>
                         <th>Department</th>
                         <th>Hire Date</th>
@@ -17,9 +17,9 @@
                 <tbody>
                     <tr *ngFor="let employee of employees">
                         <td>{{employee.employeeId}}</td>
-                        <td>{{employee.user?.email}}</td>
+                        <td>{{employee.email}}</td>
                         <td>{{employee.position}}</td>
-                        <td>{{employee.department?.name}}</td>
+                        <td>{{employee.departmentId}}</td>
                         <td>{{employee.hireDate | date:'shortDate'}}</td>
                         <td>
                             <span class="badge"
@@ -28,15 +28,13 @@
                             </span>
                         </td>
                         <td>
-                            <button class="btn btn-sm btn-info me-1"
+                            <button class="btn btn-sm btn-info me-1 mr-2"
                                 (click)="viewRequests(employee.id)">Requests</button>
-                            <button class="btn btn-sm btn-info me-1"
+                            <button class="btn btn-sm btn-info me-1 mr-2"
                                 (click)="viewWorkflows(employee.id)">Workflows</button>
-                            <button *ngIf="account()?.role === 'Admin'" class="btn btn-sm btn-warning me-1"
+                            <button class="btn btn-sm btn-warning me-1 mr-2"
                                 (click)="transfer(employee.id)">Transfer</button>
-                            <button class="btn btn-sm btn-primary me-1" (click)="edit(employee.id)">Edit</button>
-                            <button *ngIf="account()?.role === 'Admin'" class="btn btn-sm btn-danger"
-                                (click)="delete(employee.id)">Delete</button>
+                            <button class="btn btn-sm btn-primary me-1 mr-2" (click)="edit(employee.id)">Edit</button>
                         </td>
                     </tr>
                 </tbody>

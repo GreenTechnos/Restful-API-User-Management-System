@@ -18,7 +18,7 @@ import { Role } from '@app/_models';        // Assuming this path is correct
 // --- Interfaces - Combining and refining ---
 interface Account {
     id: number;
-    title?: string;
+    title: string;
     firstName?: string;
     lastName?: string;
     email: string;
@@ -40,6 +40,7 @@ interface Employee {
     id: number;
     employeeId: string; // The 'EMP001' style ID
     userId: number; // This should link to Account.id
+    email: string; // Optional: If you want to link email to employee
     position: string;
     departmentId: number;
     hireDate: string;
@@ -81,8 +82,8 @@ export class FakeBackendInterceptor implements HttpInterceptor {
 
     // In-memory for other entities
     private employees: Employee[] = [
-        { id: 1, employeeId: 'EMP001', userId: 1, position: 'Developer', departmentId: 1, hireDate: '2025-01-01', status: 'Active' },
-        { id: 2, employeeId: 'EMP002', userId: 2, position: 'Designer', departmentId: 2, hireDate: '2025-02-01', status: 'Active' }
+        { id: 1, employeeId: 'EMP001', userId: 1, email: 'admin@example.com', position: 'Developer', departmentId: 1, hireDate: '2025-01-01', status: 'Active' },
+        { id: 2, employeeId: 'EMP002', userId: 2, email: 'user@example.com', position: 'Designer', departmentId: 2, hireDate: '2025-02-01', status: 'Active' }
     ];
     private departments: Department[] = [
         { id: 1, name: 'Engineering', description: 'Software development team', employeeCount: 1 },
@@ -107,12 +108,12 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         // Ensure default admin/user if local storage is empty or new
         if (this.accounts.length === 0) {
             this.accounts.push({
-                id: 1, email: 'admin@example.com', password: 'admin', role: Role.Admin, employeeId: 1,
+                id: 1, title: 'Mr', email: 'admin@example.com', password: 'admin', role: Role.Admin, employeeId: 1,
                 isVerified: true, status: 'Active', refreshTokens: [], dateCreated: new Date().toISOString(),
                 firstName: 'Admin', lastName: 'User'
             });
             this.accounts.push({
-                id: 2, email: 'user@example.com', password: 'user', role: Role.User, employeeId: 2,
+                id: 2, title: 'Mr', email: 'user@example.com', password: 'user', role: Role.User, employeeId: 2,
                 isVerified: true, status: 'Active', refreshTokens: [], dateCreated: new Date().toISOString(),
                 firstName: 'Normal', lastName: 'User'
             });
@@ -244,6 +245,14 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                     this.departments.push(newDepartment);
                     return this.ok(newDepartment, 201);
                 });
+
+            case url.match(/\/departments\/(\d+)$/) && method === 'GET': {
+                const id = this.idFromUrl(url);
+                return this.authorize(headers, null, () => { // Or specific role if needed
+                    const department = this.departments.find(d => d.id === id);
+                    return department ? this.ok(department) : this.error(`Department with id ${id} not found`, 404);
+                });
+            }
             case url.match(/\/departments\/(\d+)$/) && method === 'PUT': {
                 const id = this.idFromUrl(url);
                 return this.authorize(headers, Role.Admin, () => {
@@ -319,6 +328,27 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                     this.appRequests.push(newRequest);
                     return this.ok(newRequest, 201);
                 });
+            case url.match(/\/requests\/(\d+)$/) && method === 'GET': {
+                const id = this.idFromUrl(url);
+                return this.authorize(headers, null, () => { // Allow user to get their own, admin to get any
+                    const currentAcc = this.currentAccount(headers);
+                    if (!currentAcc) return this.unauthorized();
+
+                    const request = this.appRequests.find(r => r.id === id);
+                    if (!request) {
+                        return this.error(`Request with id ${id} not found`, 404);
+                    }
+
+                    // Authorization check: Admin can see any, user can only see their own
+                    if (currentAcc.role !== Role.Admin) {
+                        const employee = this.employees.find(e => e.id === request.employeeId);
+                        if (!employee || employee.userId !== currentAcc.id) {
+                            return this.unauthorized("You are not authorized to view this request.");
+                        }
+                    }
+                    return this.ok(request);
+                });
+            }
 
 
             default:
