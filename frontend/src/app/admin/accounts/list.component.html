@@ -5,7 +5,9 @@
 <table class="table table-striped">
     <thead>
         <tr>
-            <th style="width:30%">Name</th>
+            <th style="width:30%">Title</th>
+            <th style="width:30%">First Name</th>
+            <th style="width:30%">Last Name</th>
             <th style="width:30%">Email</th>
             <th style="width:30%">Status</th>
             <th style="width:30%">Role</th>
@@ -14,7 +16,9 @@
     </thead>
     <tbody>
         <tr *ngFor="let account of accounts">
-            <td>{{account.title}} {{account.firstName}} {{account.lastName}}</td>
+            <td>{{account.title}}</td>
+            <td>{{account.firstName}}</td>
+            <td>{{account.lastName}}</td>
             <td>{{account.email}}</td>
             <td>{{account.status}}</td>
             <td>{{account.role}}</td>

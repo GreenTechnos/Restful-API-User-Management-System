@@ -3,7 +3,7 @@
   <div class="card-body">
     <div class="table-responsive">
       <table class="table table-striped">
-        <thead> 
+        <thead>
           <tr>
             <th>Type</th>
             <th>Employee</th>
@@ -15,9 +15,9 @@
         <tbody>
           <tr *ngFor="let request of requests">
             <td>{{request.type}}</td>
-            <td>{{request.employee?.employeeId}}</td>
+            <td>{{request.employeeId}}</td>
             <td>
-              <ul>
+              <ul class="list-unstyled mb-0">
                 <li *ngFor="let item of request.requestItems">
                   {{item.name}} (x{{item.quantity}})
                 </li>
@@ -25,17 +25,12 @@
             </td>
             <td>{{request.status}}</td>
             <td>
-              <button *ngIf="account()?.role === 'Admin'" class="btn btn-sm btn-primary me-1" (click)="edit(request.id)">
-                Edit
-              </button>
-              <button *ngIf="account()?.role === 'Admin'" class="btn btn-sm btn-danger" (click)="delete(request.id)">
-                Delete
-              </button>
+              <button class="btn btn-sm btn-primary me-1" [routerLink]="['edit', request.id]">Edit</button>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
-    <button class="btn btn-primary float-end" (click)="add()">Add Request</button>
+    <a routerLink="add" class="btn btn-sm btn-success">Add Request</a>
   </div>
 </div>

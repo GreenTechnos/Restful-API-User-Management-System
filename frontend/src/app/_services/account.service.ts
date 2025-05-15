@@ -97,14 +97,14 @@ export class AccountService {
         return this.http.put(`${this.departmentsUrl}/${id}`, params);
     }
     getAllDepartments(): Observable<any[]> {
-    return this.http.get<any[]>(this.departmentsUrl);
+        return this.http.get<any[]>(this.departmentsUrl);
     }
 
     deleteDepartment(id: string): Observable<any> {
         return this.http.delete(`${this.departmentsUrl}/${id}`);
     }
 
-        // Add to AccountService
+    // Add to AccountService
     private employeesUrl = `${environment.apiUrl}/employees`;
 
     getAllUsers(): Observable<any[]> {
@@ -123,7 +123,7 @@ export class AccountService {
         return this.http.put(`${this.employeesUrl}/${id}`, params);
     }
     deleteEmployee(id: string): Observable<any> {
-    return this.http.delete(`${this.employeesUrl}/${id}`);
+        return this.http.delete(`${this.employeesUrl}/${id}`);
     }
 
     private requestsUrl = `${environment.apiUrl}/requests`;
@@ -139,7 +139,7 @@ export class AccountService {
     updateRequest(id: string, params: any): Observable<any> {
         return this.http.put(`${this.requestsUrl}/${id}`, params);
     }
-    
+
     getAllRequests(): Observable<any[]> {
         return this.http.get<any[]>(this.requestsUrl);
     }
@@ -156,7 +156,7 @@ export class AccountService {
     updateWorkflowStatus(workflowId: string, params: any): Observable<any> {
         return this.http.put(`${this.workflowsUrl}/${workflowId}/status`, params);
     }
-        update(id: string, params: any): Observable<Account> {
+    update(id: string, params: any): Observable<Account> {
         return this.http.put(`${baseUrl}/${id}`, params)
             .pipe(map((account: Account) => {
                 // update the current account if it was updated
@@ -178,6 +178,18 @@ export class AccountService {
                 }
                 return x;
             }));
+    }
+
+    public getAccountByUserId(userId: number | undefined): Account | undefined {
+        if (userId === undefined || userId === null) {
+            return undefined;
+        }
+        // In the context of the FakeBackend, all "accounts" are stored in localStorage
+        // under the key used by the FakeBackendInterceptor.
+        const accountsKey = 'accounts'; // Define the key used in localStorage
+        const allAccountsFromStorage = JSON.parse(localStorage.getItem(accountsKey) || '[]') as Account[];
+        // The 'userId' in your Employee model is meant to link to the 'id' of an Account.
+        return allAccountsFromStorage.find(acc => Number(acc.id) === Number(userId));
     }
 
 
