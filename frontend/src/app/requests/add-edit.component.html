@@ -30,7 +30,7 @@
         <select id="employeeId" formControlName="employeeId" class="form-select"
           [ngClass]="{ 'is-invalid': submitted && f.employeeId.errors }">
           <option [ngValue]="null" disabled>Select Employee</option> <!-- Placeholder -->
-          <option *ngFor="let emp of employees" [ngValue]="emp.id">
+          <option *ngFor="let emp of employeesForDropdown" [ngValue]="emp.id">
             {{ emp.employeeId }}
           </option>
         </select>

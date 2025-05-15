@@ -14,6 +14,7 @@ import { delay, mergeMap, materialize, dematerialize } from 'rxjs/operators';
 
 import { AlertService } from '@app/_services'; // Assuming this path is correct
 import { Role } from '@app/_models';        // Assuming this path is correct
+import { WorkflowStatus } from '@app/_models/workflow';
 
 // --- Interfaces - Combining and refining ---
 interface Account {
@@ -55,6 +56,7 @@ interface Department {
 }
 
 interface Workflow {
+    originatingRequestId?: number;
     id: number;
     employeeId: number;
     type: string;
@@ -64,12 +66,13 @@ interface Workflow {
     datetimecreated?: string; // Example from a previous context if needed for sorting
 }
 
-export interface AppRequest { // Renamed from 'RequestItem' to avoid conflict with HttpRequest
-    id: number;
-    employeeId: number | null;
+export interface AppRequest {
+    id?: number;
+    employeeId: number | null; // Employee who submitted the request
     type: string;
     requestItems: { name: string; quantity: number }[];
-    status: string;
+    status?: 'Pending Approval' | 'Approved' | 'Rejected' | 'Pending' | string; // Make this more specific
+    workflowId?: number; // Optional: to link directly to the approval workflow ID
 }
 
 export interface EmployeeForDropdown { // Simple interface for the dropdown
@@ -308,36 +311,136 @@ export class FakeBackendInterceptor implements HttpInterceptor {
 
 
             // Workflows
-            case url.match(/\/workflows\/employee\/(\d+)$/) && method === 'GET': {
+            case url.match(/\/workflows\/employee\/(\d+)$/) && method === 'GET': { // Keep this if you also want to support path params
                 const idMatch = url.match(/\/workflows\/employee\/(\d+)$/);
                 if (!idMatch) return this.error('Invalid URL for employee workflows', 400);
-                const employeeId = parseInt(idMatch[1]);
+                const employeeIdFromPath = parseInt(idMatch[1]);
                 return this.authorize(headers, null, () => {
-                    const workflows = this.workflows.filter(w => w.employeeId === employeeId);
+                    const workflows = this.workflows.filter(w => w.employeeId === employeeIdFromPath);
                     return this.ok(workflows);
                 });
             }
-            case url.endsWith('/workflows') && method === 'POST':
-                return this.authorize(headers, Role.Admin, () => {
+            case url.endsWith('/workflows') && method === 'POST': // For creating a new workflow
+                return this.authorize(headers, null, () => { // Allow any authenticated user to be part of a workflow creation process initiated by another service
+                    const newWorkflowData = body as Partial<Workflow>;
                     const newWorkflow: Workflow = {
                         id: this.nextWorkflowId++,
-                        ...body,
-                        datetimecreated: new Date().toISOString() // Add timestamp on creation
+                        employeeId: newWorkflowData.employeeId!, // Ensure employeeId is passed
+                        type: newWorkflowData.type!,
+                        details: newWorkflowData.details || {},
+                        status: newWorkflowData.status || WorkflowStatus.Pending,
+                        datetimecreated: new Date().toISOString(),
+                        originatingRequestId: newWorkflowData.originatingRequestId
                     };
                     this.workflows.push(newWorkflow);
+                    // If this workflow creation implies the original request is now 'Pending Approval'
+                    if (newWorkflow.type === 'Request Approval' && newWorkflow.originatingRequestId) {
+                        const requestIndex = this.appRequests.findIndex(r => r.id === newWorkflow.originatingRequestId);
+                        if (requestIndex !== -1) {
+                            this.appRequests[requestIndex].status = 'Pending Approval';
+                            // Potentially save appRequests if it were persisted
+                        }
+                    }
                     return this.ok(newWorkflow, 201);
                 });
             // *** ADDED HANDLER FOR GET /workflows ***
-            case url.endsWith('/workflows') && method === 'GET':
-                return this.authorize(headers, Role.Admin, () => { // Or null if all users can see all workflows
-                    // Optional: sort workflows if not already handled by client or a specific query param
-                    const sortedWorkflows = [...this.workflows].sort((a, b) => {
-                        const dateA = new Date(a.datetimecreated || 0).getTime();
-                        const dateB = new Date(b.datetimecreated || 0).getTime();
-                        return dateB - dateA; // Descending
+            case url.endsWith('/workflows') && method === 'GET': {
+                // Attempt to get employeeId from query parameters
+                const urlWithParams = new URL(url, 'http://localhost'); // Need full URL for URLSearchParams
+                const employeeIdFromQueryParam = urlWithParams.searchParams.get('employeeId');
+
+                if (employeeIdFromQueryParam) {
+                    // If employeeId query param exists, filter by it
+                    const employeeId = parseInt(employeeIdFromQueryParam, 10);
+                    if (isNaN(employeeId)) {
+                        return this.error('Invalid employeeId query parameter', 400);
+                    }
+                    return this.authorize(headers, null, () => { // Or role-specific
+                        const filteredWorkflows = this.workflows.filter(w => w.employeeId === employeeId);
+                        const sortedWorkflows = this.sortWorkflowsInternal(filteredWorkflows); // Use an internal sort helper
+                        return this.ok(sortedWorkflows);
                     });
-                    return this.ok(sortedWorkflows);
+                } else {
+                    // If no employeeId query param, return all (Admin only, or as per your rules)
+                    return this.authorize(headers, Role.Admin, () => {
+                        const sortedWorkflows = this.sortWorkflowsInternal(this.workflows);
+                        return this.ok(sortedWorkflows);
+                    });
+                }
+            }
+
+            case url.match(/\/workflows\/(\d+)$/) && method === 'PUT': {
+                const id = this.idFromUrl(url); // Extracts the ID from the URL
+                const requestBody = body;       // The body of the PUT request, e.g., { status: 'Approved' } or full workflow object
+
+                return this.authorize(headers, Role.Admin, () => { // Or appropriate role for updating status
+                    const workflowIndex = this.workflows.findIndex(w => w.id === id);
+                    if (workflowIndex === -1) {
+                        return this.error(`Workflow with id ${id} not found`, 404);
+                    }
+
+                    // Update the workflow. If body only contains status, merge it.
+                    // If body contains other properties, they will also be updated.
+                    this.workflows[workflowIndex] = { ...this.workflows[workflowIndex], ...requestBody, id: id };
+
+                    const updatedWorkflow = this.workflows[workflowIndex];
+
+                    // **IMPORTANT: Synchronization with AppRequest status (if applicable)**
+                    if (updatedWorkflow.type === 'Request Approval' && updatedWorkflow.originatingRequestId) {
+                        const requestIndex = this.appRequests.findIndex(r => r.id === updatedWorkflow.originatingRequestId);
+                        if (requestIndex !== -1) {
+                            let newRequestStatus = this.appRequests[requestIndex].status; // Keep current if no direct mapping
+                            if (updatedWorkflow.status === WorkflowStatus.Approved) {
+                                newRequestStatus = 'Approved'; // Assuming 'Approved' is a valid AppRequest status
+                            } else if (updatedWorkflow.status === WorkflowStatus.Rejected) {
+                                newRequestStatus = 'Rejected'; // Assuming 'Rejected' is a valid AppRequest status
+                            }
+                            // Add more mappings if needed (e.g. Completed -> Approved, etc.)
+                            if (this.appRequests[requestIndex].status !== newRequestStatus &&
+                                (newRequestStatus === 'Approved' || newRequestStatus === 'Rejected')) {
+                                this.appRequests[requestIndex].status = newRequestStatus;
+                            }
+                        }
+                    }
+                    // Optionally save this.workflows if they were persisted (they are in-memory here)
+
+                    return this.ok(updatedWorkflow); // Return the updated workflow
                 });
+            }
+
+            case url.match(/\/workflows\/(\d+)$/) && (method === 'PUT' || method === 'PATCH'): { // For updating workflow (e.g. status)
+                const id = this.idFromUrl(url);
+                const requestBody = body;
+
+                return this.authorize(headers, Role.Admin, () => { // Or role of approver
+                    const workflowIndex = this.workflows.findIndex(w => w.id === id);
+                    if (workflowIndex === -1) {
+                        return this.error(`Workflow with id ${id} not found`, 404);
+                    }
+
+                    // Merge update: only update fields present in requestBody
+                    this.workflows[workflowIndex] = { ...this.workflows[workflowIndex], ...requestBody, id: id };
+                    const updatedWorkflow = this.workflows[workflowIndex];
+
+                    // Sync with AppRequest status
+                    if (updatedWorkflow.type === 'Request Approval' && updatedWorkflow.originatingRequestId) {
+                        const appRequestIndex = this.appRequests.findIndex(r => r.id === updatedWorkflow.originatingRequestId);
+                        if (appRequestIndex !== -1) {
+                            let newAppRequestStatus = this.appRequests[appRequestIndex].status; // Default to current
+                            if (updatedWorkflow.status === WorkflowStatus.Approved) {
+                                newAppRequestStatus = 'Approved';
+                            } else if (updatedWorkflow.status === WorkflowStatus.Rejected) {
+                                newAppRequestStatus = 'Rejected';
+                            }
+                            // Only update if it's a final decision for the request
+                            if (newAppRequestStatus === 'Approved' || newAppRequestStatus === 'Rejected') {
+                                this.appRequests[appRequestIndex].status = newAppRequestStatus;
+                            }
+                        }
+                    }
+                    return this.ok(updatedWorkflow);
+                });
+            }
 
             // AppRequests
             case url.endsWith('/requests') && method === 'GET':
@@ -382,7 +485,42 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                     return this.ok(request);
                 });
             }
+            case url.endsWith('/requests') && method === 'POST': // For creating a new AppRequest
+                return this.authorize(headers, null, () => {
+                    const currentAcc = this.currentAccount(headers);
+                    if (!currentAcc || !currentAcc.employeeId) return this.error("User not linked to an employee or not authenticated.", 400);
 
+                    const newRequestData = body as Partial<AppRequest>;
+                    const newRequest: AppRequest = {
+                        id: this.nextAppRequestId++,
+                        employeeId: Number(newRequestData.employeeId) || currentAcc.employeeId, // Use submitted or fallback to current user
+                        type: newRequestData.type!,
+                        requestItems: newRequestData.requestItems || [],
+                        status: newRequestData.status || 'Pending Approval' // Set initial status
+                    };
+                    this.appRequests.push(newRequest);
+                    return this.ok(newRequest, 201);
+                });
+
+            case url.match(/\/requests\/(\d+)$/) && method === 'PUT': { // For updating an AppRequest
+                const id = this.idFromUrl(url);
+                return this.authorize(headers, null, () => { // Allow user to update their own, admin to update any
+                    const currentAcc = this.currentAccount(headers);
+                    if (!currentAcc) return this.unauthorized();
+
+                    const requestIndex = this.appRequests.findIndex(r => r.id === id);
+                    if (requestIndex === -1) return this.error('Request not found', 404);
+
+                    const requestToUpdate = this.appRequests[requestIndex];
+                    if (currentAcc.role !== Role.Admin && requestToUpdate.employeeId !== currentAcc.employeeId) {
+                        return this.unauthorized("You are not authorized to update this request.");
+                    }
+
+                    const { status, ...updateData } = body; // Typically status is not updated directly here anymore
+                    this.appRequests[requestIndex] = { ...requestToUpdate, ...updateData, id };
+                    return this.ok(this.appRequests[requestIndex]);
+                });
+            }
 
             default:
                 // return next.handle(request); // If you have a real backend
@@ -455,6 +593,14 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             this.clearRefreshTokenCookie();
         }
         return this.ok({ message: 'Token revoked successfully.' });
+    }
+
+    private sortWorkflowsInternal(workflows: Workflow[]): Workflow[] {
+        return [...workflows].sort((a, b) => {
+            const dateA = new Date(a.datetimecreated || 0).getTime();
+            const dateB = new Date(b.datetimecreated || 0).getTime();
+            return dateB - dateA; // Descending
+        });
     }
 
     private register(body: any): Observable<HttpEvent<any>> {
