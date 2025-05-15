@@ -3,11 +3,13 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { first } from 'rxjs/operators';
 import { AccountService } from '@app/_services/account.service';
 import { AlertService } from '@app/_services/alert.service';
+import { FormBuilder, FormGroup, Validators, AbstractControl } from '@angular/forms';
 
 @Component({
     templateUrl: 'add-edit.component.html'
 })
 export class AddEditEmployeeComponent implements OnInit {
+    form!: FormGroup;
     employee: any = {
         employeeId: '',
         userId: null,
@@ -25,6 +27,7 @@ export class AddEditEmployeeComponent implements OnInit {
     submitted = false;
 
     constructor(
+        private formBuilder: FormBuilder,
         private route: ActivatedRoute,
         private router: Router,
         private accountService: AccountService,
@@ -35,19 +38,59 @@ export class AddEditEmployeeComponent implements OnInit {
         this.id = this.route.snapshot.params['id'];
         this.isAddMode = !this.id;
 
+        // Initialize the form with validation
+        this.form = this.formBuilder.group({
+            employeeId: ['', Validators.required],
+            userId: [null, Validators.required],
+            position: ['', Validators.required],
+            departmentId: [null, Validators.required],
+            hireDate: [null, Validators.required],
+            status: ['Active', Validators.required]
+        });
+
         // Load users and departments
         this.loadUsers();
         this.loadDepartments();
 
-        if (!this.isAddMode) {
+        if (this.isAddMode) {
+            // Fetch and pre-fill the next employeeId
+            this.accountService.getNextEmployeeId()
+                .pipe(first())
+                .subscribe({
+                    next: (res) => {
+                        this.form.patchValue({ employeeId: res.employeeId });
+                    },
+                    error: (error) => {
+                        this.errorMessage = 'Failed to fetch next Employee ID';
+                    }
+                });
+        } else {
             this.loadEmployee();
         }
     }
 
+    // Convenience getter for easy access to form fields
+    get f(): { [key: string]: AbstractControl } { return this.form.controls; }
+
     loadUsers() {
         this.accountService.getAllUsers()
             .pipe(first())
-            .subscribe(users => this.users = users);
+            .subscribe({
+                next: (users) => {
+                    console.log('Loaded users:', users);
+                    if (Array.isArray(users)) {
+                        this.users = users;
+                    } else {
+                        console.error('Expected users to be an array but got:', typeof users);
+                        this.errorMessage = 'Error loading users data';
+                        this.users = [];
+                    }
+                },
+                error: (error) => {
+                    console.error('Error loading users:', error);
+                    this.errorMessage = 'Error loading users data';
+                }
+            });
     }
 
     loadDepartments() {
@@ -62,7 +105,7 @@ export class AddEditEmployeeComponent implements OnInit {
             .pipe(first())
             .subscribe({
                 next: (employee) => {
-                    this.employee = employee;
+                    this.form.patchValue(employee);
                     this.loading = false;
                 },
                 error: (error) => {
@@ -75,6 +118,11 @@ export class AddEditEmployeeComponent implements OnInit {
     save() {
         this.submitted = true;
         this.alertService.clear();
+
+        // Stop here if form is invalid
+        if (this.form.invalid) {
+            return;
+        }
 
         if (this.loading) {
             return;
@@ -89,7 +137,7 @@ export class AddEditEmployeeComponent implements OnInit {
     }
 
     private createEmployee() {
-        this.accountService.createEmployee(this.employee)
+        this.accountService.createEmployee(this.form.value)
             .pipe(first())
             .subscribe({
                 next: () => {
@@ -104,7 +152,7 @@ export class AddEditEmployeeComponent implements OnInit {
     }
 
     private updateEmployee() {
-        this.accountService.updateEmployee(this.id, this.employee)
+        this.accountService.updateEmployee(this.id, this.form.value)
             .pipe(first())
             .subscribe({
                 next: () => {
@@ -119,6 +167,10 @@ export class AddEditEmployeeComponent implements OnInit {
     }
 
     cancel() {
-        this.router.navigate(['/employees']);
+        if (this.isAddMode) {
+            this.router.navigate(['../'], { relativeTo: this.route });
+        } else {
+            this.router.navigate(['../../'], { relativeTo: this.route });
+        }
     }
 }

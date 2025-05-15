@@ -1,914 +1,1273 @@
 import { Injectable } from '@angular/core';
-import {
-    HttpRequest,
-    HttpResponse,
-    HttpHandler,
-    HttpEvent,
-    HttpInterceptor,
-    HTTP_INTERCEPTORS,
-    HttpErrorResponse,
-    HttpHeaders
-} from '@angular/common/http';
+import { HttpRequest, HttpResponse, HttpHandler, HttpEvent, HttpInterceptor, HTTP_INTERCEPTORS, HttpHeaders } from '@angular/common/http';
 import { Observable, of, throwError } from 'rxjs';
 import { delay, mergeMap, materialize, dematerialize } from 'rxjs/operators';
 
-import { AlertService } from '@app/_services'; // Assuming this path is correct
-import { Role } from '@app/_models';        // Assuming this path is correct
-import { WorkflowStatus } from '@app/_models/workflow';
+import { AlertService } from '@app/_services';
+import { Role } from '@app/_models';
+import { environment } from '@environments/environment';
 
-// --- Interfaces - Combining and refining ---
-interface Account {
-    id: number;
-    title: string;
-    firstName?: string;
-    lastName?: string;
-    email: string;
-    password?: string; // Should be hashed in a real app, stored as-is for fake backend comparison
-    role: Role | string;
-    employeeId?: number; // Link to an employee
-    jwtToken?: string; // For the access token (typically not stored with user, but for response)
-    dateCreated?: string;
-    dateUpdated?: string;
-    isVerified?: boolean;
-    verificationToken?: string;
-    resetToken?: string;
-    resetTokenExpires?: Date | string; // Store as ISO string or Date object
-    refreshTokens?: string[]; // Array of active refresh tokens
-    status?: 'Active' | 'Inactive' | string;
-}
+// array in local storage for accounts
+const accountsKey = 'angular-10-registration-login-example-accounts';
+let accounts = JSON.parse(localStorage.getItem(accountsKey)) || [];
 
-interface Employee {
-    id: number;
-    employeeId: string; // The 'EMP001' style ID
-    userId: number; // This should link to Account.id
-    email: string; // Optional: If you want to link email to employee
-    position: string;
-    departmentId: number;
-    hireDate: string;
-    status: string;
-}
+// in-memory data
+let employees = [
+    { id: 1, employeeId: 'EMP001', userId: 1, position: 'Developer', departmentId: 1, hireDate: '2025-01-01', status: 'Active' },
+    { id: 2, employeeId: 'EMP002', userId: 2, position: 'Designer', departmentId: 2, hireDate: '2025-02-01', status: 'Active' }
+];
 
-interface Department {
-    id: number;
-    name: string;
-    description: string;
-    employeeCount: number;
-}
+let departments = [
+    { id: 1, name: 'Engineering', description: 'Software development team', employeeCount: 1 },
+    { id: 2, name: 'Marketing', description: 'Marketing team', employeeCount: 1 }
+];
 
-interface Workflow {
-    originatingRequestId?: number;
-    id: number;
-    employeeId: number;
-    type: string;
-    details: any;
-    status: string;
-    // Optional: Add a creation timestamp if you want to sort by it
-    datetimecreated?: string; // Example from a previous context if needed for sorting
-}
+let workflows = [
+    { id: 1, employeeId: 1, type: 'Onboarding', details: 'Task: Setup workstation', status: 'Pending' }
+];
 
-export interface AppRequest {
-    id?: number;
-    employeeId: number | null; // Employee who submitted the request
-    type: string;
-    requestItems: { name: string; quantity: number }[];
-    status?: 'Pending Approval' | 'Approved' | 'Rejected' | 'Pending' | string; // Make this more specific
-    workflowId?: number; // Optional: to link directly to the approval workflow ID
-}
-
-export interface EmployeeForDropdown { // Simple interface for the dropdown
-    id: number;
-    employeeId: string; // The display ID like EMP001
-}
-
-// Key for localStorage
-const accountsKey = 'app-hr-tool-accounts'; // Made key more specific
+let requests = [
+    { id: 1, employeeId: 1, type: 'Equipment', requestItems: [{ name: 'Laptop', quantity: 1 }, { name: 'Monitor', quantity: 2 }], status: 'Pending' },
+    { id: 2, employeeId: 1, type: 'Software', requestItems: [{ name: 'Visual Studio', quantity: 1 }, { name: 'Office 365', quantity: 1 }], status: 'Approved' },
+    { id: 3, employeeId: 2, type: 'Training', requestItems: [{ name: 'Adobe Illustrator Course', quantity: 1 }], status: 'Rejected' },
+    { id: 4, employeeId: 2, type: 'Equipment', requestItems: [{ name: 'Drawing Tablet', quantity: 1 }], status: 'Pending' }
+];
 
 @Injectable()
 export class FakeBackendInterceptor implements HttpInterceptor {
-    // --- Data Management ---
-    private accounts: Account[];
-
-    // In-memory for other entities
-    private employees: Employee[] = [
-        { id: 1, employeeId: 'EMP001', userId: 1, email: 'admin@example.com', position: 'Developer', departmentId: 1, hireDate: '2025-01-01', status: 'Active' },
-        { id: 2, employeeId: 'EMP002', userId: 2, email: 'user@example.com', position: 'Designer', departmentId: 2, hireDate: '2025-02-01', status: 'Active' }
-    ];
-    private departments: Department[] = [
-        { id: 1, name: 'Engineering', description: 'Software development team', employeeCount: 1 },
-        { id: 2, name: 'Marketing', description: 'Marketing team', employeeCount: 1 }
-    ];
-    private workflows: Workflow[] = [
-        { id: 1, employeeId: 1, type: 'Onboarding', details: { task: 'Setup workstation' }, status: 'Pending', datetimecreated: new Date(Date.now() - 100000).toISOString() },
-        { id: 2, employeeId: 2, type: 'Offboarding', details: { task: 'Return equipment' }, status: 'Completed', datetimecreated: new Date(Date.now() - 200000).toISOString() }
-    ];
-    private appRequests: AppRequest[] = [
-        { id: 1, employeeId: 2, type: 'Equipment', requestItems: [{ name: 'Laptop', quantity: 1 }], status: 'Pending' }
-    ];
-
-    // ID Generators for in-memory entities
-    private nextEmployeeId = this.employees.length > 0 ? Math.max(0, ...this.employees.map(e => e.id)) + 1 : 1;
-    private nextDepartmentId = this.departments.length > 0 ? Math.max(0, ...this.departments.map(d => d.id)) + 1 : 1;
-    private nextWorkflowId = this.workflows.length > 0 ? Math.max(0, ...this.workflows.map(w => w.id)) + 1 : 1;
-    private nextAppRequestId = this.appRequests.length > 0 ? Math.max(0, ...this.appRequests.map(r => r.id)) + 1 : 1;
-
-    constructor(private alertService: AlertService) {
-        this.accounts = JSON.parse(localStorage.getItem(accountsKey)) || [];
-        // Ensure default admin/user if local storage is empty or new
-        if (this.accounts.length === 0) {
-            this.accounts.push({
-                id: 1, title: 'Mr', email: 'admin@example.com', password: 'admin', role: Role.Admin, employeeId: 1,
-                isVerified: true, status: 'Active', refreshTokens: [], dateCreated: new Date().toISOString(),
-                firstName: 'Admin', lastName: 'User'
-            });
-            this.accounts.push({
-                id: 2, title: 'Mr', email: 'user@example.com', password: 'user', role: Role.User, employeeId: 2,
-                isVerified: true, status: 'Active', refreshTokens: [], dateCreated: new Date().toISOString(),
-                firstName: 'Normal', lastName: 'User'
-            });
-            this.saveAccounts();
-        }
-    }
+    constructor(private alertService: AlertService) { }
 
     intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
         const { url, method, headers, body } = request;
+        const alertService = this.alertService;
+
+        // Extract the path from the URL (remove the API prefix if present)
+        const apiUrl = environment.apiUrl;
+        const path = url.startsWith(apiUrl) ? url.substring(apiUrl.length) : url;
 
         return of(null)
-            .pipe(mergeMap(() => this.handleRoute(url, method, headers as HttpHeaders, body, next)))
+            .pipe(mergeMap(() => handleRoute()))
             .pipe(materialize())
             .pipe(delay(500))
             .pipe(dematerialize());
-    }
 
-    private handleRoute(url: string, method: string, headers: HttpHeaders, body: any, next: HttpHandler): Observable<HttpEvent<any>> {
-        // --- ACCOUNT MANAGEMENT ROUTES ---
-        switch (true) {
-            case url.endsWith('/accounts/authenticate') && method === 'POST':
-                return this.authenticate(body, headers);
-            case url.endsWith('/accounts/refresh-token') && method === 'POST':
-                return this.refreshToken(body, headers);
-            case url.endsWith('/accounts/revoke-token') && method === 'POST':
-                return this.revokeToken(body, headers);
-            case url.endsWith('/accounts/register') && method === 'POST':
-                return this.register(body);
-            case url.endsWith('/accounts/verify-email') && method === 'POST':
-                return this.verifyEmail(body);
-            case url.endsWith('/accounts/forgot-password') && method === 'POST':
-                return this.forgotPassword(body);
-            case url.endsWith('/accounts/validate-reset-token') && method === 'POST':
-                return this.validateResetToken(body);
-            case url.endsWith('/accounts/reset-password') && method === 'POST':
-                return this.resetPassword(body);
-            case url.endsWith('/accounts') && method === 'GET':
-                return this.getAccounts(headers);
-            case url.match(/\/accounts\/(\d+)$/) && method === 'GET':
-                return this.getAccountById(this.idFromUrl(url), headers);
-            case url.endsWith('/accounts') && method === 'POST':
-                return this.createAccount(body, headers);
-            case url.match(/\/accounts\/(\d+)$/) && method === 'PUT':
-                return this.updateAccount(this.idFromUrl(url), body, headers);
-            case url.match(/\/accounts\/(\d+)$/) && method === 'DELETE':
-                return this.deleteAccount(this.idFromUrl(url), headers);
-
-            // --- OTHER ENTITY ROUTES ---
-            // Employees
-            case url.endsWith('/accounts/users') && method === 'GET':
-                return this.authorize(headers, null, () => {
-                    const usersToReturn = this.accounts.map(acc => this.basicDetails(acc));
-                    return this.ok(usersToReturn);
-                });
-            case url.endsWith('/employees') && method === 'GET':
-                return this.authorize(headers, null, () => this.ok(this.employees));
-            case url.endsWith('/employees') && method === 'POST':
-                return this.authorize(headers, Role.Admin, () => {
-                    const newEmployee: Employee = { id: this.nextEmployeeId++, ...body };
-                    this.employees.push(newEmployee);
-                    const dept = this.departments.find(d => d.id === newEmployee.departmentId);
-                    if (dept) dept.employeeCount++;
-                    return this.ok(newEmployee, 201);
-                });
-            case url.match(/\/employees\/(\d+)$/) && method === 'GET': {
-                const id = this.idFromUrl(url);
-                return this.authorize(headers, null, () => {
-                    const employee = this.employees.find(e => e.id === id);
-                    return employee ? this.ok(employee) : this.error('Employee not found', 404);
-                });
+        function handleRoute() {
+            switch (true) {
+                // Account endpoints
+                case path.endsWith('/accounts/authenticate') && method === 'POST':
+                    return authenticate();
+                case path.endsWith('/accounts/refresh-token') && method === 'POST':
+                    return refreshToken();
+                case path.endsWith('/accounts/revoke-token') && method === 'POST':
+                    return revokeToken();
+                case path.endsWith('/accounts/register') && method === 'POST':
+                    return register();
+                case path.endsWith('/accounts/verify-email') && method === 'POST':
+                    return verifyEmail();
+                case path.endsWith('/accounts/forgot-password') && method === 'POST':
+                    return forgotPassword();
+                case path.endsWith('/accounts/validate-reset-token') && method === 'POST':
+                    return validateResetToken();
+                case path.endsWith('/accounts/reset-password') && method === 'POST':
+                    return resetPassword();
+                case path.endsWith('/accounts') && method === 'GET':
+                    return getAccounts();
+                case path.match(/\/accounts\/\d+$/) && method === 'GET':
+                    return getAccountById();
+                case path.endsWith('/accounts') && method === 'POST':
+                    return createAccount();
+                case path.match(/\/accounts\/\d+$/) && method === 'PUT':
+                    return updateAccount();
+                
+                // Employee endpoints
+                case path.endsWith('/employees') && method === 'GET':
+                    return authorize(null, () => getEmployees());
+                case path.endsWith('/employees/nextId') && method === 'GET':
+                    return authorize(null, () => getNextEmployeeId());
+                case path.endsWith('/employees') && method === 'POST':
+                    return authorize(Role.Admin, () => createEmployee());
+                case path.match(/\/employees\/\d+$/) && method === 'GET':
+                    return authorize(null, () => getEmployeeById());
+                case path.match(/\/employees\/\d+\/with-details$/) && method === 'GET':
+                    return authorize(null, () => getEmployeeWithDetails());
+                case path.match(/\/employees\/\d+$/) && method === 'PUT':
+                    return authorize(Role.Admin, () => updateEmployee());
+                case path.match(/\/employees\/\d+\/transfer$/) && method === 'POST':
+                    return authorize(Role.Admin, () => transferEmployee());
+                
+                // Department endpoints
+                case path.endsWith('/departments') && method === 'GET':
+                    return authorize(null, () => getDepartments());
+                case path.endsWith('/departments') && method === 'POST':
+                    return authorize(Role.Admin, () => createDepartment());
+                case path.match(/\/departments\/\d+$/) && method === 'GET':
+                    return authorize(null, () => getDepartmentById());
+                case path.match(/\/departments\/\d+$/) && method === 'PUT':
+                    return authorize(Role.Admin, () => updateDepartment());
+                
+                // Workflow endpoints
+                case path.match(/\/workflows\/employee\/\d+$/) && method === 'GET':
+                    return authorize(null, () => getEmployeeWorkflows());
+                case path.endsWith('/workflows') && method === 'GET':
+                    return authorize(null, () => getAllWorkflows());
+                case path.endsWith('/workflows') && method === 'POST':
+                    return authorize(Role.Admin, () => createWorkflow());
+                case path.match(/\/workflows\/\d+\/status$/) && method === 'PUT':
+                    return authorize(Role.Admin, () => updateWorkflow());
+                case path.match(/\/workflows\/\d+$/) && method === 'PUT':
+                    return authorize(Role.Admin, () => updateWorkflow());
+                
+                // Request endpoints
+                case path.endsWith('/requests') && method === 'GET':
+                    return authorize(null, () => getRequests());
+                case path.match(/\/requests\?employeeId=\d+$/) && method === 'GET':
+                    return authorize(null, () => getRequestsByEmployeeId());
+                case path.match(/\/requests\/\d+$/) && method === 'GET':
+                    return authorize(null, () => getRequestById());
+                case path.endsWith('/requests') && method === 'POST':
+                    return authorize(null, () => createRequest());
+                case path.match(/\/requests\/\d+$/) && method === 'PUT':
+                    return authorize(Role.Admin, () => updateRequest());
+                
+                default:
+                    // pass through any requests not handled above
+                    return next.handle(request);
             }
-            // In FakeBackendInterceptor, within the handleRoute method:
-            case url.match(/\/employees\/(\d+)$/) && method === 'PUT': {
-                const id = this.idFromUrl(url); // This is the employee's ID (number)
-                console.log(`PUT /employees/${id} - Request Body:`, JSON.stringify(body));
-                return this.authorize(headers, Role.Admin, () => {
-                    const employeeIndex = this.employees.findIndex(e => e.id === id);
-                    if (employeeIndex === -1) return this.error('Employee not found', 404);
-
-                    const oldEmployeeData = this.employees[employeeIndex];
-                    // Create updatedEmployee, ensuring body properties are merged
-                    const updatedEmployee = { ...oldEmployeeData, ...body, id };
-
-                    // Ensure the departmentId from the body is treated as a number for comparison
-                    const targetDepartmentIdFromBody = updatedEmployee.departmentId !== undefined && updatedEmployee.departmentId !== null
-                        ? parseInt(String(updatedEmployee.departmentId), 10)
-                        : undefined;
-
-                    // Update departmentId on the employee object IF it was provided in the body
-                    if (targetDepartmentIdFromBody !== undefined && !isNaN(targetDepartmentIdFromBody)) {
-                        updatedEmployee.departmentId = targetDepartmentIdFromBody;
-                    }
-
-
-                    if (oldEmployeeData.departmentId !== updatedEmployee.departmentId) {
-                        const oldDept = this.departments.find(d => d.id === oldEmployeeData.departmentId);
-                        if (oldDept) oldDept.employeeCount = Math.max(0, oldDept.employeeCount - 1);
-
-                        // Now updatedEmployee.departmentId should be a number if it was valid
-                        const newDept = this.departments.find(d => d.id === updatedEmployee.departmentId);
-                        if (newDept) {
-                            newDept.employeeCount++;
-                        } else if (updatedEmployee.departmentId !== oldEmployeeData.departmentId) {
-                            // Only error if a new, non-existent departmentId was attempted
-                            return this.error(`Target department with id '${updatedEmployee.departmentId}' not found`, 400);
-                        }
-                    }
-
-                    this.employees[employeeIndex] = updatedEmployee;
-                    return this.ok(this.employees[employeeIndex]);
-                });
-            }
-            case url.match(/\/employees\/(\d+)$/) && method === 'DELETE': {
-                const id = this.idFromUrl(url);
-                return this.authorize(headers, Role.Admin, () => {
-                    const employeeIndex = this.employees.findIndex(e => e.id === id);
-                    if (employeeIndex === -1) return this.error('Employee not found', 404);
-                    const deletedEmployee = this.employees.splice(employeeIndex, 1)[0];
-                    if (deletedEmployee) {
-                        const dept = this.departments.find(d => d.id === deletedEmployee.departmentId);
-                        if (dept) dept.employeeCount = Math.max(0, dept.employeeCount - 1);
-                    }
-                    return this.ok({ message: 'Employee deleted' });
-                });
-            }
-            case url.match(/\/employees\/(\d+)\/transfer$/) && method === 'POST': {
-                const idMatch = url.match(/\/employees\/(\d+)\/transfer$/);
-                if (!idMatch) return this.error('Invalid URL for employee transfer', 400);
-                const id = parseInt(idMatch[1]);
-                return this.authorize(headers, Role.Admin, () => {
-                    const employee = this.employees.find(e => e.id === id);
-                    if (!employee) return this.error('Employee not found', 404);
-                    const oldDepartmentId = employee.departmentId;
-                    const newDepartmentId = body.departmentId;
-                    if (oldDepartmentId !== newDepartmentId) {
-                        const oldDept = this.departments.find(d => d.id === oldDepartmentId);
-                        if (oldDept) oldDept.employeeCount = Math.max(0, oldDept.employeeCount - 1);
-                        const newDept = this.departments.find(d => d.id === newDepartmentId);
-                        if (newDept) newDept.employeeCount++;
-                        else return this.error('Target department not found', 400);
-                    }
-                    employee.departmentId = newDepartmentId;
-                    this.workflows.push({
-                        id: this.nextWorkflowId++, employeeId: id, type: 'Transfer',
-                        details: body, status: 'Pending', datetimecreated: new Date().toISOString()
-                    });
-                    return this.ok({ message: 'Employee transferred successfully', employee });
-                });
-            }
-
-            // Departments
-            case url.endsWith('/departments') && method === 'GET':
-                return this.authorize(headers, null, () => this.ok(this.departments));
-            case url.endsWith('/departments') && method === 'POST':
-                return this.authorize(headers, Role.Admin, () => {
-                    const newDepartment: Department = { id: this.nextDepartmentId++, ...body, employeeCount: 0 };
-                    this.departments.push(newDepartment);
-                    return this.ok(newDepartment, 201);
-                });
-
-            case url.match(/\/departments\/(\d+)$/) && method === 'GET': {
-                const id = this.idFromUrl(url);
-                return this.authorize(headers, null, () => { // Or specific role if needed
-                    const department = this.departments.find(d => d.id === id);
-                    return department ? this.ok(department) : this.error(`Department with id ${id} not found`, 404);
-                });
-            }
-            case url.match(/\/departments\/(\d+)$/) && method === 'PUT': {
-                const id = this.idFromUrl(url);
-                return this.authorize(headers, Role.Admin, () => {
-                    const deptIndex = this.departments.findIndex(d => d.id === id);
-                    if (deptIndex === -1) return this.error('Department not found', 404);
-                    this.departments[deptIndex] = { ...this.departments[deptIndex], ...body, id };
-                    return this.ok(this.departments[deptIndex]);
-                });
-            }
-            case url.match(/\/departments\/(\d+)$/) && method === 'DELETE': {
-                const id = this.idFromUrl(url);
-                return this.authorize(headers, Role.Admin, () => {
-                    const dept = this.departments.find(d => d.id === id);
-                    if (!dept) return this.error('Department not found', 404);
-                    if (dept.employeeCount > 0) return this.error('Cannot delete department with active employees.', 400);
-                    this.departments = this.departments.filter(d => d.id !== id);
-                    return this.ok({ message: 'Department deleted' });
-                });
-            }
-
-
-            // Workflows
-            case url.match(/\/workflows\/employee\/(\d+)$/) && method === 'GET': { // Keep this if you also want to support path params
-                const idMatch = url.match(/\/workflows\/employee\/(\d+)$/);
-                if (!idMatch) return this.error('Invalid URL for employee workflows', 400);
-                const employeeIdFromPath = parseInt(idMatch[1]);
-                return this.authorize(headers, null, () => {
-                    const workflows = this.workflows.filter(w => w.employeeId === employeeIdFromPath);
-                    return this.ok(workflows);
-                });
-            }
-            case url.endsWith('/workflows') && method === 'POST': // For creating a new workflow
-                return this.authorize(headers, null, () => { // Allow any authenticated user to be part of a workflow creation process initiated by another service
-                    const newWorkflowData = body as Partial<Workflow>;
-                    const newWorkflow: Workflow = {
-                        id: this.nextWorkflowId++,
-                        employeeId: newWorkflowData.employeeId!, // Ensure employeeId is passed
-                        type: newWorkflowData.type!,
-                        details: newWorkflowData.details || {},
-                        status: newWorkflowData.status || WorkflowStatus.Pending,
-                        datetimecreated: new Date().toISOString(),
-                        originatingRequestId: newWorkflowData.originatingRequestId
-                    };
-                    this.workflows.push(newWorkflow);
-                    // If this workflow creation implies the original request is now 'Pending Approval'
-                    if (newWorkflow.type === 'Request Approval' && newWorkflow.originatingRequestId) {
-                        const requestIndex = this.appRequests.findIndex(r => r.id === newWorkflow.originatingRequestId);
-                        if (requestIndex !== -1) {
-                            this.appRequests[requestIndex].status = 'Pending Approval';
-                            // Potentially save appRequests if it were persisted
-                        }
-                    }
-                    return this.ok(newWorkflow, 201);
-                });
-            // *** ADDED HANDLER FOR GET /workflows ***
-            case url.endsWith('/workflows') && method === 'GET': {
-                // Attempt to get employeeId from query parameters
-                const urlWithParams = new URL(url, 'http://localhost'); // Need full URL for URLSearchParams
-                const employeeIdFromQueryParam = urlWithParams.searchParams.get('employeeId');
-
-                if (employeeIdFromQueryParam) {
-                    // If employeeId query param exists, filter by it
-                    const employeeId = parseInt(employeeIdFromQueryParam, 10);
-                    if (isNaN(employeeId)) {
-                        return this.error('Invalid employeeId query parameter', 400);
-                    }
-                    return this.authorize(headers, null, () => { // Or role-specific
-                        const filteredWorkflows = this.workflows.filter(w => w.employeeId === employeeId);
-                        const sortedWorkflows = this.sortWorkflowsInternal(filteredWorkflows); // Use an internal sort helper
-                        return this.ok(sortedWorkflows);
-                    });
-                } else {
-                    // If no employeeId query param, return all (Admin only, or as per your rules)
-                    return this.authorize(headers, Role.Admin, () => {
-                        const sortedWorkflows = this.sortWorkflowsInternal(this.workflows);
-                        return this.ok(sortedWorkflows);
-                    });
-                }
-            }
-
-            case url.match(/\/workflows\/(\d+)$/) && method === 'PUT': {
-                const id = this.idFromUrl(url); // Extracts the ID from the URL
-                const requestBody = body;       // The body of the PUT request, e.g., { status: 'Approved' } or full workflow object
-
-                return this.authorize(headers, Role.Admin, () => { // Or appropriate role for updating status
-                    const workflowIndex = this.workflows.findIndex(w => w.id === id);
-                    if (workflowIndex === -1) {
-                        return this.error(`Workflow with id ${id} not found`, 404);
-                    }
-
-                    // Update the workflow. If body only contains status, merge it.
-                    // If body contains other properties, they will also be updated.
-                    this.workflows[workflowIndex] = { ...this.workflows[workflowIndex], ...requestBody, id: id };
-
-                    const updatedWorkflow = this.workflows[workflowIndex];
-
-                    // **IMPORTANT: Synchronization with AppRequest status (if applicable)**
-                    if (updatedWorkflow.type === 'Request Approval' && updatedWorkflow.originatingRequestId) {
-                        const requestIndex = this.appRequests.findIndex(r => r.id === updatedWorkflow.originatingRequestId);
-                        if (requestIndex !== -1) {
-                            let newRequestStatus = this.appRequests[requestIndex].status; // Keep current if no direct mapping
-                            if (updatedWorkflow.status === WorkflowStatus.Approved) {
-                                newRequestStatus = 'Approved'; // Assuming 'Approved' is a valid AppRequest status
-                            } else if (updatedWorkflow.status === WorkflowStatus.Rejected) {
-                                newRequestStatus = 'Rejected'; // Assuming 'Rejected' is a valid AppRequest status
-                            }
-                            // Add more mappings if needed (e.g. Completed -> Approved, etc.)
-                            if (this.appRequests[requestIndex].status !== newRequestStatus &&
-                                (newRequestStatus === 'Approved' || newRequestStatus === 'Rejected')) {
-                                this.appRequests[requestIndex].status = newRequestStatus;
-                            }
-                        }
-                    }
-                    // Optionally save this.workflows if they were persisted (they are in-memory here)
-
-                    return this.ok(updatedWorkflow); // Return the updated workflow
-                });
-            }
-
-            case url.match(/\/workflows\/(\d+)$/) && (method === 'PUT' || method === 'PATCH'): { // For updating workflow (e.g. status)
-                const id = this.idFromUrl(url);
-                const requestBody = body;
-
-                return this.authorize(headers, Role.Admin, () => { // Or role of approver
-                    const workflowIndex = this.workflows.findIndex(w => w.id === id);
-                    if (workflowIndex === -1) {
-                        return this.error(`Workflow with id ${id} not found`, 404);
-                    }
-
-                    // Merge update: only update fields present in requestBody
-                    this.workflows[workflowIndex] = { ...this.workflows[workflowIndex], ...requestBody, id: id };
-                    const updatedWorkflow = this.workflows[workflowIndex];
-
-                    // Sync with AppRequest status
-                    if (updatedWorkflow.type === 'Request Approval' && updatedWorkflow.originatingRequestId) {
-                        const appRequestIndex = this.appRequests.findIndex(r => r.id === updatedWorkflow.originatingRequestId);
-                        if (appRequestIndex !== -1) {
-                            let newAppRequestStatus = this.appRequests[appRequestIndex].status; // Default to current
-                            if (updatedWorkflow.status === WorkflowStatus.Approved) {
-                                newAppRequestStatus = 'Approved';
-                            } else if (updatedWorkflow.status === WorkflowStatus.Rejected) {
-                                newAppRequestStatus = 'Rejected';
-                            }
-                            // Only update if it's a final decision for the request
-                            if (newAppRequestStatus === 'Approved' || newAppRequestStatus === 'Rejected') {
-                                this.appRequests[appRequestIndex].status = newAppRequestStatus;
-                            }
-                        }
-                    }
-                    return this.ok(updatedWorkflow);
-                });
-            }
-
-            // AppRequests
-            case url.endsWith('/requests') && method === 'GET':
-                return this.authorize(headers, null, () => {
-                    const currentAcc = this.currentAccount(headers);
-                    if (!currentAcc) return this.unauthorized();
-                    if (currentAcc.role === Role.Admin) return this.ok(this.appRequests);
-
-                    const userRequests = this.appRequests.filter(r => {
-                        const emp = this.employees.find(e => e.id === r.employeeId);
-                        return emp && emp.userId === currentAcc.id;
-                    });
-                    return this.ok(userRequests);
-                });
-            case url.endsWith('/requests') && method === 'POST':
-                return this.authorize(headers, null, () => {
-                    const currentAcc = this.currentAccount(headers);
-                    if (!currentAcc || !currentAcc.employeeId) return this.error("User not linked to an employee or not authenticated.", 400);
-
-                    const newRequest: AppRequest = { id: this.nextAppRequestId++, employeeId: currentAcc.employeeId, ...body, status: 'Pending' };
-                    this.appRequests.push(newRequest);
-                    return this.ok(newRequest, 201);
-                });
-            case url.match(/\/requests\/(\d+)$/) && method === 'GET': {
-                const id = this.idFromUrl(url);
-                return this.authorize(headers, null, () => { // Allow user to get their own, admin to get any
-                    const currentAcc = this.currentAccount(headers);
-                    if (!currentAcc) return this.unauthorized();
-
-                    const request = this.appRequests.find(r => r.id === id);
-                    if (!request) {
-                        return this.error(`Request with id ${id} not found`, 404);
-                    }
-
-                    // Authorization check: Admin can see any, user can only see their own
-                    if (currentAcc.role !== Role.Admin) {
-                        const employee = this.employees.find(e => e.id === request.employeeId);
-                        if (!employee || employee.userId !== currentAcc.id) {
-                            return this.unauthorized("You are not authorized to view this request.");
-                        }
-                    }
-                    return this.ok(request);
-                });
-            }
-            case url.endsWith('/requests') && method === 'POST': // For creating a new AppRequest
-                return this.authorize(headers, null, () => {
-                    const currentAcc = this.currentAccount(headers);
-                    if (!currentAcc || !currentAcc.employeeId) return this.error("User not linked to an employee or not authenticated.", 400);
-
-                    const newRequestData = body as Partial<AppRequest>;
-                    const newRequest: AppRequest = {
-                        id: this.nextAppRequestId++,
-                        employeeId: Number(newRequestData.employeeId) || currentAcc.employeeId, // Use submitted or fallback to current user
-                        type: newRequestData.type!,
-                        requestItems: newRequestData.requestItems || [],
-                        status: newRequestData.status || 'Pending Approval' // Set initial status
-                    };
-                    this.appRequests.push(newRequest);
-                    return this.ok(newRequest, 201);
-                });
-
-            case url.match(/\/requests\/(\d+)$/) && method === 'PUT': { // For updating an AppRequest
-                const id = this.idFromUrl(url);
-                return this.authorize(headers, null, () => { // Allow user to update their own, admin to update any
-                    const currentAcc = this.currentAccount(headers);
-                    if (!currentAcc) return this.unauthorized();
-
-                    const requestIndex = this.appRequests.findIndex(r => r.id === id);
-                    if (requestIndex === -1) return this.error('Request not found', 404);
-
-                    const requestToUpdate = this.appRequests[requestIndex];
-                    if (currentAcc.role !== Role.Admin && requestToUpdate.employeeId !== currentAcc.employeeId) {
-                        return this.unauthorized("You are not authorized to update this request.");
-                    }
-
-                    const { status, ...updateData } = body; // Typically status is not updated directly here anymore
-                    this.appRequests[requestIndex] = { ...requestToUpdate, ...updateData, id };
-                    return this.ok(this.appRequests[requestIndex]);
-                });
-            }
-
-            default:
-                // return next.handle(request); // If you have a real backend
-                return throwError(() => new HttpErrorResponse({
-                    status: 404, error: { message: `Fake backend: Route not found for ${method} ${url}` }
-                }));
         }
-    }
 
-    // --- ACCOUNT MANAGEMENT METHODS ---
-    private authenticate(body: any, headers: HttpHeaders): Observable<HttpEvent<any>> {
-        const { email, password } = body;
-        const account = this.accounts.find(x => x.email === email);
-
-        if (!account) return this.error('Email does not exist', 400);
-        if (!account.isVerified) {
-            setTimeout(() => {
-                const verifyUrl = `${location.origin}/account/verify-email?token=${account.verificationToken}`;
-                this.alertService.info(`<h4>Verification Email</h4><p>Please click the link to verify: <a href="${verifyUrl}">${verifyUrl}</a></p>`, { autoClose: false });
-            }, 1000);
-            return this.error('Email is not yet verified.', 400);
+        // Account route functions
+        function authenticate() {
+            const { email, password } = body;
+            const account = accounts.find(x => x.email === email);
+        
+            if (!account) {
+                return error('Email does not exist');
+            }
+        
+            if (!account.isVerified) {
+                // Display verification email alert
+                setTimeout(() => {
+                    const verifyUrl = `${location.origin}/account/verify-email?token=${account.verificationToken}`;
+                    alertService.info(`
+                        <h4>Verification Email</h4>
+                        <p>Please click the below link to verify your email address:</p>
+                        <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+                    `, { autoClose: false });
+                }, 1000);
+        
+                return error('Email is not yet verified');
+            }
+        
+            if (account.password !== password) {
+                return error('Incorrect password');
+            }
+        
+            if (account.status !== 'Active') {
+                return error('Account is inactive. Please contact support.');
+            }
+        
+            account.refreshTokens.push(generateRefreshToken());
+            localStorage.setItem(accountsKey, JSON.stringify(accounts));
+        
+            return ok({
+                ...basicDetails(account),
+                jwtToken: generateJwtToken(account)
+            });
         }
-        if (account.password !== password) return this.error('Incorrect password.', 400);
-        if (account.status !== 'Active') return this.error('Account is inactive. Please contact support.', 400);
 
-        account.refreshTokens = account.refreshTokens || [];
-        account.refreshTokens.push(this.generateRefreshTokenForCookie());
-        this.saveAccounts();
+        function refreshToken() {
+            const refreshToken = getRefreshToken();
 
-        const accountDetails = this.basicDetails(account);
-        return this.ok({
-            ...accountDetails,
-            jwtToken: this.generateJwtToken(account)
-        });
-    }
+            if (!refreshToken) return unauthorized();
 
-    private refreshToken(body: any, headers: HttpHeaders): Observable<HttpEvent<any>> {
-        const requestRefreshTokenFromBody = body.refreshToken;
-        const requestRefreshTokenFromCookie = this.getRefreshTokenFromCookie();
-        const requestRefreshToken = requestRefreshTokenFromBody || requestRefreshTokenFromCookie;
+            const account = accounts.find(x => x.refreshTokens.includes(refreshToken));
 
+            if (!account) return unauthorized();
 
-        if (!requestRefreshToken) return this.unauthorized('Refresh token missing.');
+            // replace old refresh token with a new one and save
+            account.refreshTokens = account.refreshTokens.filter(x => x !== refreshToken);
+            account.refreshTokens.push(generateRefreshToken());
+            localStorage.setItem(accountsKey, JSON.stringify(accounts));
 
-        const account = this.accounts.find(x => x.refreshTokens && x.refreshTokens.includes(requestRefreshToken));
-        if (!account) return this.unauthorized('Invalid or expired refresh token.');
-
-        account.refreshTokens = account.refreshTokens.filter(x => x !== requestRefreshToken);
-        account.refreshTokens.push(this.generateRefreshTokenForCookie());
-        this.saveAccounts();
-
-        return this.ok({
-            ...this.basicDetails(account),
-            jwtToken: this.generateJwtToken(account)
-        });
-    }
-
-    private revokeToken(body: any, headers: HttpHeaders): Observable<HttpEvent<any>> {
-        const currentAcc = this.currentAccount(headers);
-        if (!currentAcc) return this.unauthorized();
-
-        const tokenToRevoke = body.token || this.getRefreshTokenFromCookie();
-        const account = this.accounts.find(x => x.id === currentAcc.id);
-
-        if (account && account.refreshTokens && tokenToRevoke) {
-            account.refreshTokens = account.refreshTokens.filter(x => x !== tokenToRevoke);
-            this.saveAccounts();
+            return ok({
+                ...basicDetails(account),
+                jwtToken: generateJwtToken(account)
+            });
         }
-        if (tokenToRevoke && tokenToRevoke === this.getRefreshTokenFromCookie()) {
-            this.clearRefreshTokenCookie();
+
+        function revokeToken() {
+            if (!isAuthenticated()) return unauthorized();
+
+            const refreshToken = getRefreshToken();
+            const account = accounts.find(x => x.refreshTokens.includes(refreshToken));
+
+            // revoke token and save
+            account.refreshTokens = account.refreshTokens.filter(x => x !== refreshToken);
+            localStorage.setItem(accountsKey, JSON.stringify(accounts));
+
+            return ok();
         }
-        return this.ok({ message: 'Token revoked successfully.' });
-    }
 
-    private sortWorkflowsInternal(workflows: Workflow[]): Workflow[] {
-        return [...workflows].sort((a, b) => {
-            const dateA = new Date(a.datetimecreated || 0).getTime();
-            const dateB = new Date(b.datetimecreated || 0).getTime();
-            return dateB - dateA; // Descending
-        });
-    }
+        function register() {
+            const account = body;
 
-    private register(body: any): Observable<HttpEvent<any>> {
-        const newAccountData = body as Partial<Account>;
-
-        if (!newAccountData.email || !newAccountData.password) {
-            return this.error('Email and password are required.', 400);
-        }
-        if (this.accounts.find(x => x.email === newAccountData.email)) {
-            setTimeout(() => {
-                this.alertService.info(`
+            if (accounts.find(x => x.email === account.email)) {
+                // display email already registered message in alert
+                setTimeout(() => {
+                    alertService.info(`
                         <h4>Email Already Registered</h4>
-                        <p>Your email ${newAccountData.email} is already registered.</p>
+                        <p>Your email ${account.email} is already registered.</p>
                         <p>If you don't know your password please visit the <a href="${location.origin}/account/forgot-password">forgot password</a> page.</p>
                         <div>
                         <strong>NOTE:</strong> The fake backend displayed this "email" so you can test without an API. A real backend would send a real email.
                         </div>
                     `, { autoclose: false });
-            }, 1000);
-            return this.error(`Email '${newAccountData.email}' is already registered.`, 400);
-        }
+                }, 1000);
 
-        const newAccount: Account = {
-            id: this.newAccountId(),
-            email: newAccountData.email,
-            password: newAccountData.password,
-            role: this.accounts.length === 0 ? Role.Admin : Role.User,
-            firstName: newAccountData.firstName || '',
-            lastName: newAccountData.lastName || '',
-            title: newAccountData.title || '',
-            status: this.accounts.length === 0 ? 'Active' : 'Inactive',
-            dateCreated: new Date().toISOString(),
-            verificationToken: `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`,
-            isVerified: this.accounts.length === 0,
-            refreshTokens: []
-        };
+                // always return ok() response to prevent email enumeration
+                return ok();
+            }
 
-        this.accounts.push(newAccount);
-        this.saveAccounts();
+            // assign account id and a few other properties then save
+            account.id = newAccountId();
+            if (account.id === 1) {
+                // first registered account is an admin
+                account.role = Role.Admin;
+                account.status = 'Active'; // Admin accounts get active status
+            } else {
+                account.role = Role.User;
+                account.status = 'Inactive'; // User accounts get inacitve status upon creation
+            }
+            account.dateCreated = new Date().toISOString();
+            account.verificationToken = new Date().getTime().toString();
+            account.isVerified = false;
+            account.refreshTokens = [];
+            delete account.confirmPassword;
+            accounts.push(account);
+            localStorage.setItem(accountsKey, JSON.stringify(accounts));
 
-        if (!newAccount.isVerified) {
+            // display verification email in alert
             setTimeout(() => {
-                const verifyUrl = `${location.origin}/account/verify-email?token=${newAccount.verificationToken}`;
-                this.alertService.info(`<h4>Verification Email</h4><p>Thanks for registering! Please click the link to verify your email: <a href="${verifyUrl}">${verifyUrl}</a></p><div><strong>NOTE:</strong> This is a fake email.</div>`, { autoClose: false });
+                const verifyUrl = `${location.origin}/account/verify-email?token=${account.verificationToken}`;
+                alertService.info(`
+                    <h4>Verification Email</h4>
+                    <p>Thanks for registering!</p>
+                    <p>Please click the below link to verify your email address:</p>
+                    <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+                    <div><strong>NOTE:</strong> The fake backend displayed this "email" so you can test without an API. A real backend would send a real email.</div>
+                `, { autoclose: false });
             }, 1000);
+
+            return ok();
         }
-        return this.ok({ message: 'Registration successful. Please check your email to verify your account if required.' }, 201);
-    }
 
-    private verifyEmail(body: any): Observable<HttpEvent<any>> {
-        const { token } = body;
-        if (!token) return this.error('Verification token is required.', 400);
+        function verifyEmail() {
+            const { token } = body;
+            const account = accounts.find(x => !!x.verificationToken && x.verificationToken === token);
 
-        const account = this.accounts.find(x => x.verificationToken === token);
-        if (!account) return this.error('Verification failed.', 400);
-        if (account.isVerified) return this.ok({ message: 'Email already verified.' });
+            if (!account) return error('Verification failed');
 
+            // set is verified flag to true if token is valid
+            account.isVerified = true;
+            localStorage.setItem(accountsKey, JSON.stringify(accounts));
 
-        account.isVerified = true;
-        account.status = 'Active';
-        delete account.verificationToken;
-        this.saveAccounts();
-        return this.ok({ message: 'Email verified successfully. You can now login.' });
-    }
+            return ok();
+        }
 
-    private forgotPassword(body: any): Observable<HttpEvent<any>> {
-        const { email } = body;
-        if (!email) return this.error('Email is required.', 400);
+        function forgotPassword() {
+            const { email } = body;
+            const account = accounts.find(x => x.email === email);
 
-        const account = this.accounts.find(x => x.email === email);
-        if (account) {
-            account.resetToken = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
-            account.resetTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-            this.saveAccounts();
+            // always return ok() response to prevent email enumeration
+            if (!account) return ok();
+
+            // create reset token that expires after 24 hours
+            account.resetToken = new Date().getTime().toString();
+            account.resetTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            localStorage.setItem(accountsKey, JSON.stringify(accounts));
+
+            // display password reset email in alert
             setTimeout(() => {
                 const resetUrl = `${location.origin}/account/reset-password?token=${account.resetToken}`;
-                this.alertService.info(`<h4>Reset Password Email</h4><p>Please click the link to reset your password: <a href="${resetUrl}">${resetUrl}</a></p><p>The link will be valid for 24 hours.</p><div><strong>NOTE:</strong> This is a fake email.</div>`, { autoClose: false });
+                alertService.info(`
+                    <h4>Reset Password Email</h4>
+                    <p>Please click the below link to reset your password, the link will be valid for 1 day:</p>
+                    <p><a href="${resetUrl}">${resetUrl}</a></p>
+                    <div><strong>NOTE:</strong> The fake backend displayed this "email" so you can test without an API. A real backend would send a real email.</div>
+                `, { autoClose: false });
             }, 1000);
+
+            return ok();
         }
-        return this.ok({ message: 'If your email address is registered, you will receive a password reset link.' });
-    }
 
-    private validateResetToken(body: any): Observable<HttpEvent<any>> {
-        const { token } = body;
-        if (!token) return this.error('Reset token is required.', 400);
-        const account = this.accounts.find(x => x.resetToken === token && x.resetTokenExpires && new Date(x.resetTokenExpires) > new Date());
-        return account ? this.ok({ message: 'Token is valid.' }) : this.error('Invalid or expired reset token.', 400);
-    }
+        function validateResetToken() {
+            const { token } = body;
+            const account = accounts.find(x =>
+                !!x.resetToken &&
+                x.resetToken === token &&
+                new Date() < new Date(x.resetTokenExpires)
+            );
 
-    private resetPassword(body: any): Observable<HttpEvent<any>> {
-        const { token, password } = body;
-        if (!token || !password) return this.error('Token and new password are required.', 400);
+            if (!account) return error("Invalid token");
 
-        const account = this.accounts.find(x => x.resetToken === token && x.resetTokenExpires && new Date(x.resetTokenExpires) > new Date());
-        if (!account) return this.error('Invalid or expired reset token.', 400);
-
-        account.password = password;
-        account.isVerified = true;
-        account.status = 'Active';
-        delete account.resetToken;
-        delete account.resetTokenExpires;
-        this.saveAccounts();
-        return this.ok({ message: 'Password has been reset successfully. You can now login.' });
-    }
-
-    private getAccounts(headers: HttpHeaders): Observable<HttpEvent<any>> {
-        return this.authorize(headers, Role.Admin, () => {
-            return this.ok(this.accounts.map(acc => this.basicDetails(acc)));
-        });
-    }
-
-    private getAccountById(id: number, headers: HttpHeaders): Observable<HttpEvent<any>> {
-        const currentAcc = this.currentAccount(headers);
-        if (!currentAcc) return this.unauthorized();
-
-        const account = this.accounts.find(x => x.id === id);
-        if (!account) return this.error('Account not found', 404);
-
-        if (currentAcc.role !== Role.Admin && currentAcc.id !== account.id) {
-            return this.unauthorized("You are not authorized to view this account.");
+            return ok();
         }
-        return this.ok(this.basicDetails(account));
-    }
 
-    private createAccount(body: any, headers: HttpHeaders): Observable<HttpEvent<any>> {
-        return this.authorize(headers, Role.Admin, () => {
-            const newAccountData = body as Partial<Account>;
-            if (!newAccountData.email || !newAccountData.password || !newAccountData.role) {
-                return this.error('Email, password, and role are required for new account creation.', 400);
+        function resetPassword() {
+            const { token, password } = body;
+            const account = accounts.find(x =>
+                !!x.resetToken && x.resetToken === token &&
+                new Date() < new Date(x.resetTokenExpires)
+            );
+
+            if (!account) return error('Invalid token');
+
+            // update password and remove reset token
+            account.password = password;
+            account.isVerified = true;
+            delete account.resetToken;
+            delete account.resetTokenExpires;
+            localStorage.setItem(accountsKey, JSON.stringify(accounts));
+
+            return ok();
+        }
+
+        function getAccounts() {
+            if (!isAuthenticated()) return unauthorized();
+            return ok(accounts.map(x => basicDetails(x)));
+        }
+
+        function getAccountById() {
+            if (!isAuthenticated()) return unauthorized();
+
+            let account = accounts.find(x => x.id === idFromUrl());
+
+            // user accounts can get own profile and admin accounts can get all profiles
+            if (account.id !== currentAccount().id && !isAuthorized(Role.Admin)) {
+                return unauthorized();
             }
-            if (this.accounts.find(x => x.email === newAccountData.email)) {
-                return this.error(`Email '${newAccountData.email}' is already registered`, 400);
+
+            return ok(basicDetails(account));
+        }
+
+        function createAccount() {
+            if (!isAuthorized(Role.Admin)) return unauthorized();
+
+            const account = body;
+            if (accounts.find(x => x.email === account.email)) {
+                return error(`Email ${account.email} is already registered`);
             }
-            const newAccount: Account = {
-                id: this.newAccountId(),
-                email: newAccountData.email,
-                password: newAccountData.password,
-                role: newAccountData.role,
-                firstName: newAccountData.firstName || '',
-                lastName: newAccountData.lastName || '',
-                title: newAccountData.title || '',
-                dateCreated: new Date().toISOString(),
-                isVerified: true,
-                status: 'Active',
-                refreshTokens: [],
-                employeeId: newAccountData.employeeId
+
+            // assign account id and a few other properties then save
+            account.id = newAccountId();
+            account.status = 'Inactive';
+            account.dateCreated = new Date().toISOString();
+            account.isVerified = true;
+            account.refreshTokens = [];
+            delete account.confirmPassword;
+            accounts.push(account);
+            localStorage.setItem(accountsKey, JSON.stringify(accounts));
+
+            return ok();
+        }
+
+        function updateAccount() {
+            if (!isAuthenticated()) return unauthorized();
+
+            let params = body;
+            let account = accounts.find(x => x.id == idFromUrl());
+
+            // user accounts can update own profile and admin accounts can update all profiles
+            if (account.id != currentAccount().id && !isAuthorized(Role.Admin)) {
+                return unauthorized();
+            }
+
+            // only update password if included
+            if (!params.password) {
+                delete params.password;
+            }
+
+            // update and save account
+            Object.assign(account, params);
+            localStorage.setItem(accountsKey, JSON.stringify(accounts));
+
+            return ok();
+        }
+
+        // Employee route functions
+        function getEmployees() {
+            // Map employees with account and department information
+            const enrichedEmployees = employees.map(employee => {
+                // Get user account details
+                const user = accounts.find(a => a.id === employee.userId);
+                
+                // Get department details
+                const department = departments.find(d => d.id === employee.departmentId);
+                
+                // Create a response with the related details
+                return {
+                    ...employee,
+                    User: user ? {
+                        id: user.id,
+                        email: user.email,
+                        role: user.role,
+                        firstName: user.firstName,
+                        lastName: user.lastName
+                    } : null,
+                    Department: department ? {
+                        id: department.id,
+                        name: department.name
+                    } : null
+                };
+            });
+            
+            return ok(enrichedEmployees);
+        }
+
+        function createEmployee() {
+            // Generate employee ID in format 'EMP' + padded number if not provided
+            let employeeId = body.employeeId;
+            if (!employeeId || !employeeId.trim()) {
+                const nextId = employees.length + 1;
+                employeeId = 'EMP' + nextId.toString().padStart(3, '0');
+            }
+            
+            // Verify the userId exists in accounts
+            const userId = parseInt(body.userId);
+            if (isNaN(userId)) {
+                return error('Please select a valid user');
+            }
+            
+            const userExists = accounts.some(a => a.id === userId);
+            if (!userExists) {
+                return error('User not found');
+            }
+            
+            // Verify the departmentId exists
+            const departmentId = parseInt(body.departmentId);
+            if (isNaN(departmentId)) {
+                return error('Please select a valid department');
+            }
+            
+            const department = departments.find(d => d.id === departmentId);
+            if (!department) {
+                return error('Department not found');
+            }
+            
+            // Create the employee with auto-generated ID
+            const nextId = employees.length + 1;
+            const employee = { 
+                id: nextId, 
+                employeeId: employeeId, 
+                userId: userId,
+                departmentId: departmentId,
+                position: body.position || '',
+                hireDate: body.hireDate || new Date().toISOString().split('T')[0],
+                status: body.status || 'Active'
             };
-            this.accounts.push(newAccount);
-            this.saveAccounts();
-            return this.ok(this.basicDetails(newAccount), 201);
-        });
-    }
-
-    private updateAccount(id: number, body: any, headers: HttpHeaders): Observable<HttpEvent<any>> {
-        const currentAcc = this.currentAccount(headers);
-        if (!currentAcc) return this.unauthorized();
-
-        const accountIndex = this.accounts.findIndex(x => x.id === id);
-        if (accountIndex === -1) return this.error('Account not found', 404);
-        const accountToUpdate = this.accounts[accountIndex];
-
-        if (currentAcc.role !== Role.Admin && currentAcc.id !== accountToUpdate.id) {
-            return this.unauthorized("You are not authorized to update this account.");
+            
+            // Add to employees array
+            employees.push(employee);
+            
+            // Update department employee count
+            department.employeeCount++;
+            
+            // Create onboarding workflow
+            workflows.push({
+                id: workflows.length + 1,
+                employeeId: nextId,
+                type: 'Onboarding',
+                details: 'Task: Setup workstation',
+                status: 'Pending'
+            });
+            
+            return ok(employee);
         }
 
-        const updateData = { ...body } as Partial<Account>;
-        if (currentAcc.id === accountToUpdate.id && currentAcc.role !== Role.Admin && updateData.role && updateData.role !== accountToUpdate.role) {
-            return this.error("You cannot change your own role.", 403);
+        function getEmployeeById() {
+            const id = parseInt(path.split('/').pop()!);
+            const employee = employees.find(e => e.id === id);
+            if (!employee) return error('Employee not found');
+            return ok(employee);
+        }
+        
+        function getEmployeeWithDetails() {
+            const id = parseInt(path.split('/').pop().split('/')[0]);
+            const employee = employees.find(e => e.id === id);
+            
+            if (!employee) return error('Employee not found');
+            
+            // Get user account details
+            const user = accounts.find(a => a.id === employee.userId);
+            
+            // Get department details
+            const department = departments.find(d => d.id === employee.departmentId);
+            
+            // Create a response with the related details
+            const response = {
+                ...employee,
+                User: user ? {
+                    id: user.id,
+                    email: user.email,
+                    role: user.role
+                } : null,
+                Department: department ? {
+                    id: department.id,
+                    name: department.name
+                } : null
+            };
+            
+            return ok(response);
         }
 
-        if (updateData.password) {
-            accountToUpdate.password = updateData.password;
-        }
-        ['firstName', 'lastName', 'title', 'email', 'role', 'status', 'employeeId'].forEach(field => {
-            if (updateData[field] !== undefined) {
-                accountToUpdate[field] = updateData[field];
+        function updateEmployee() {
+            const id = parseInt(path.split('/').pop()!);
+            const employeeIndex = employees.findIndex(e => e.id === id);
+            
+            if (employeeIndex === -1) return error('Employee not found');
+            
+            // Parse values to ensure they're numbers
+            let userId = body.userId;
+            if (userId && typeof userId === 'string') {
+                userId = parseInt(userId);
             }
-        });
-
-        accountToUpdate.dateUpdated = new Date().toISOString();
-        this.accounts[accountIndex] = accountToUpdate;
-        this.saveAccounts();
-        return this.ok(this.basicDetails(accountToUpdate));
-    }
-
-    private deleteAccount(id: number, headers: HttpHeaders): Observable<HttpEvent<any>> {
-        const currentAcc = this.currentAccount(headers);
-        if (!currentAcc) return this.unauthorized();
-
-        const accountIndex = this.accounts.findIndex(x => x.id === id);
-        if (accountIndex === -1) return this.error('Account not found', 404);
-
-        const accountToDelete = this.accounts[accountIndex];
-        if (currentAcc.role !== Role.Admin && currentAcc.id !== accountToDelete.id) {
-            return this.unauthorized("You are not authorized to delete this account.");
-        }
-        if (accountToDelete.id === currentAcc.id && accountToDelete.role === Role.Admin && this.accounts.filter(a => a.role === Role.Admin).length <= 1) {
-            return this.error("Cannot delete the last admin account.", 400);
-        }
-
-        this.accounts.splice(accountIndex, 1);
-        this.saveAccounts();
-        if (accountToDelete.id === currentAcc.id) {
-            this.clearRefreshTokenCookie();
-        }
-        return this.ok({ message: 'Account deleted successfully.' });
-    }
-
-    // --- HELPER METHODS ---
-    private ok(body?: any, status = 200): Observable<HttpResponse<any>> {
-        return of(new HttpResponse({ status, body }));
-    }
-
-    private error(message: string, status = 400): Observable<HttpEvent<never>> {
-        return throwError(() => new HttpErrorResponse({ error: { message }, status }));
-    }
-
-    private unauthorized(message = 'Unauthorized'): Observable<HttpEvent<never>> {
-        return throwError(() => new HttpErrorResponse({ status: 401, error: { message } }));
-    }
-
-    private basicDetails(account: Account): Partial<Account> {
-        const { id, title, firstName, lastName, email, role, dateCreated, dateUpdated, isVerified, status, employeeId } = account;
-        return { id, title, firstName, lastName, email, role, dateCreated, dateUpdated, isVerified, status, employeeId };
-    }
-
-    private currentAccount(headers: HttpHeaders): Account | undefined {
-        const authHeader = headers.get('Authorization');
-        if (!authHeader || !authHeader.startsWith('Bearer ')) return undefined;
-
-        const token = authHeader.substring(7);
-        try {
-            const payloadB64 = token.split('.')[1];
-            if (!payloadB64) return undefined;
-
-            const tokenPayload = JSON.parse(atob(payloadB64));
-            if (Date.now() >= tokenPayload.exp * 1000) {
-                console.warn("Fake backend: JWT token expired");
-                this.clearRefreshTokenCookie();
-                return undefined;
+            
+            let departmentId = body.departmentId;
+            if (departmentId && typeof departmentId === 'string') {
+                departmentId = parseInt(departmentId);
             }
-            return this.accounts.find(x => x.id === tokenPayload.id);
-        } catch (e) {
-            console.error("Fake backend: Error parsing JWT token", e);
-            return undefined;
-        }
-    }
-
-    private authorize(headers: HttpHeaders, requiredRole: Role | string | null, successCallback: () => Observable<HttpEvent<any>>): Observable<HttpEvent<any>> {
-        const account = this.currentAccount(headers);
-        if (!account) {
-            return this.unauthorized('Missing or invalid authentication token.');
-        }
-        if (requiredRole && account.role !== requiredRole) {
-            return throwError(() => new HttpErrorResponse({ status: 403, error: { message: 'Forbidden - Insufficient permissions' } }));
-        }
-        return successCallback();
-    }
-
-    private idFromUrl(url: string): number {
-        const match = url.match(/\/(\d+)$/);
-        return match ? parseInt(match[1], 10) : -1;
-    }
-
-    private newAccountId(): number {
-        return this.accounts.length ? Math.max(0, ...this.accounts.map(x => x.id)) + 1 : 1;
-    }
-
-    private saveAccounts(): void {
-        localStorage.setItem(accountsKey, JSON.stringify(this.accounts));
-    }
-
-    private generateJwtToken(account: Account): string {
-        const payload = {
-            id: account.id,
-            role: account.role,
-            email: account.email,
-            exp: Math.floor(new Date(Date.now() + 15 * 60 * 1000).getTime() / 1000),
-        };
-        const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-        const encodedPayload = btoa(JSON.stringify(payload));
-        return `${header}.${encodedPayload}.fake-signature-for-demo-only`;
-    }
-
-    private generateRefreshTokenForCookie(): string {
-        const token = `${Date.now()}-${Math.random().toString(36).substring(2, 12)}`;
-        const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString();
-        if (typeof document !== 'undefined') {
-            document.cookie = `fakeRefreshToken=${token}; expires=${expires}; path=/; SameSite=Lax`;
-        }
-        return token;
-    }
-
-    private getRefreshTokenFromCookie(): string | undefined {
-        if (typeof document === 'undefined') return undefined;
-        const cookies = document.cookie.split(';');
-        for (let cookie of cookies) {
-            const [name, value] = cookie.trim().split('=');
-            if (name === 'fakeRefreshToken') {
-                return value;
+            
+            // Check if user exists if userId is being updated
+            if (userId) {
+                const userExists = accounts.some(a => a.id === userId);
+                if (!userExists) {
+                    return error('User not found');
+                }
             }
+            
+            // Check if department exists if departmentId is being updated
+            if (departmentId && departmentId !== employees[employeeIndex].departmentId) {
+                const oldDepartmentId = employees[employeeIndex].departmentId;
+                
+                const oldDepartment = departments.find(d => d.id === oldDepartmentId);
+                const newDepartment = departments.find(d => d.id === departmentId);
+                
+                if (!newDepartment) {
+                    return error('Department not found');
+                }
+                
+                // Update department employee counts
+                if (oldDepartment) oldDepartment.employeeCount--;
+                newDepartment.employeeCount++;
+            }
+            
+            // Keep the employeeId unchanged
+            const employeeId = employees[employeeIndex].employeeId;
+            
+            // Create updated employee object with parsed values
+            const updatedEmployee = {
+                id,
+                employeeId,
+                userId: userId || employees[employeeIndex].userId,
+                departmentId: departmentId || employees[employeeIndex].departmentId,
+                position: body.position || employees[employeeIndex].position,
+                hireDate: body.hireDate || employees[employeeIndex].hireDate,
+                status: body.status || employees[employeeIndex].status
+            };
+            
+            // Update the employee
+            employees[employeeIndex] = updatedEmployee;
+            
+            return ok(updatedEmployee);
         }
-        return undefined;
-    }
 
-    private clearRefreshTokenCookie(): void {
-        if (typeof document !== 'undefined') {
-            document.cookie = 'fakeRefreshToken=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax';
+        function transferEmployee() {
+            const id = parseInt(path.split('/')[2]);
+            const employee = employees.find(e => e.id === id);
+            if (!employee) return error('Employee not found');
+            
+            // Get department information
+            const oldDepartmentId = employee.departmentId;
+            const newDepartmentId = body.departmentId;
+            const oldDepartment = departments.find(d => d.id === oldDepartmentId);
+            const newDepartment = departments.find(d => d.id === newDepartmentId);
+            
+            // Update employee's department
+            employee.departmentId = newDepartmentId;
+            
+            // Update department counts
+            if (oldDepartment) oldDepartment.employeeCount--;
+            if (newDepartment) newDepartment.employeeCount++;
+            
+            // Create transfer workflow
+            workflows.push({
+                id: workflows.length + 1,
+                employeeId: id,
+                type: 'Department Transfer',
+                details: `Employee transferred from ${oldDepartment?.name || 'Unknown'} to ${newDepartment?.name || 'Unknown'}.`,
+                status: 'Pending'
+            });
+            
+            return ok({ message: `Department transfer workflow created for employee ${employee.employeeId}.` });
+        }
+
+        // Department route functions
+        function getDepartments() {
+            return ok(departments);
+        }
+
+        function getDepartmentById() {
+            const id = parseInt(path.split('/').pop()!);
+            const department = departments.find(d => d.id === id);
+            
+            if (!department) return error('Department not found');
+            
+            return ok(department);
+        }
+
+        function createDepartment() {
+            // Check if department with same name already exists
+            if (departments.some(d => d.name.toLowerCase() === body.name.toLowerCase())) {
+                return error('Department with this name already exists');
+            }
+            
+            // Create department with initial employee count of 0
+            const department = { 
+                id: departments.length + 1, 
+                name: body.name,
+                description: body.description,
+                employeeCount: 0 
+            };
+            
+            departments.push(department);
+            return ok(department);
+        }
+
+        function updateDepartment() {
+            const id = parseInt(path.split('/').pop()!);
+            const deptIndex = departments.findIndex(d => d.id === id);
+            
+            if (deptIndex === -1) return error('Department not found');
+            
+            // Check if name is being changed and if it already exists
+            if (body.name && body.name !== departments[deptIndex].name) {
+                if (departments.some(d => d.id !== id && d.name.toLowerCase() === body.name.toLowerCase())) {
+                    return error('Department with this name already exists');
+                }
+            }
+            
+            // Update department
+            departments[deptIndex] = {
+                ...departments[deptIndex],
+                name: body.name || departments[deptIndex].name,
+                description: body.description || departments[deptIndex].description
+            };
+            
+            return ok(departments[deptIndex]);
+        }
+
+        // Workflow route functions
+        function getEmployeeWorkflows() {
+            const employeeId = parseInt(path.split('/').pop()!);
+            return ok(workflows.filter(w => w.employeeId === employeeId));
+        }
+
+        function getAllWorkflows() {
+            return ok(workflows);
+        }
+
+        function createWorkflow() {
+            const workflow = { id: workflows.length + 1, ...body };
+            workflows.push(workflow);
+            return ok(workflow);
+        }
+
+        function updateWorkflow() {
+            // Handle both direct update and status update endpoints
+            let id;
+            if (path.includes('/workflows/') && path.includes('/status')) {
+                // Extract ID from paths like /workflows/123/status
+                id = parseInt(path.split('/')[2]);
+            } else {
+                // Standard path like /workflows/123
+                id = parseInt(path.split('/').pop()!);
+            }
+            
+            const workflowIndex = workflows.findIndex(w => w.id === id);
+            
+            if (workflowIndex === -1) return error('Workflow not found');
+            
+            // Store previous status
+            const oldStatus = workflows[workflowIndex].status;
+            const oldWorkflow = { ...workflows[workflowIndex] };
+            
+            // Check if this is an update that includes a direct request for updating request status too
+            const updateRequestFlag = body.updateRequest === true;
+            let providedRequestId = body.requestId ? parseInt(body.requestId) : null;
+            
+            // Create a new version of the body without the special properties
+            const workflowUpdateBody: any = {...body};
+            delete workflowUpdateBody.updateRequest;
+            delete workflowUpdateBody.requestId;
+            
+            // Update workflow with clean data
+            workflows[workflowIndex] = {
+                ...workflows[workflowIndex],
+                ...workflowUpdateBody,
+                id // preserve id
+            };
+            
+            // If direct request flag was provided, prioritize using the provided requestId
+            if (updateRequestFlag && providedRequestId) {
+                console.log('Direct request to update request ID:', providedRequestId);
+                const requestIndex = requests.findIndex(r => r.id === providedRequestId);
+                
+                if (requestIndex !== -1) {
+                    // Update request status based on workflow status
+                    if (body.status === 'Approved') {
+                        requests[requestIndex].status = 'Approved';
+                        console.log('Updated request status to Approved');
+                    } else if (body.status === 'Rejected') {
+                        requests[requestIndex].status = 'Rejected';
+                        console.log('Updated request status to Rejected');
+                    } else if (body.status === 'Pending') {
+                        requests[requestIndex].status = 'Pending';
+                        console.log('Updated request status to Pending');
+                    }
+                } else {
+                    console.log('Request not found with ID:', providedRequestId);
+                }
+            }
+            // Otherwise, try to extract requestId from workflow details (for backward compatibility)
+            else if ((workflows[workflowIndex].type === 'Request Approval' || 
+                 workflows[workflowIndex].type === 'RequestApproval' ||
+                 workflows[workflowIndex].type.includes('Request')) && 
+                body.status && 
+                body.status !== oldStatus) {
+                
+                // Try to extract requestId from details field
+                const detailsText = workflows[workflowIndex].details || '';
+                console.log('Workflow details text:', detailsText);
+                
+                // Extract requestId - first try to parse as JSON
+                let requestId = null;
+                try {
+                    // Try to parse details as JSON
+                    if (typeof detailsText === 'string') {
+                        if (detailsText.trim().startsWith('{')) {
+                            const detailsObj = JSON.parse(detailsText);
+                            if (detailsObj.requestId) {
+                                requestId = parseInt(detailsObj.requestId.toString());
+                                console.log('Extracted requestId from JSON:', requestId);
+                            }
+                        }
+                    } else if (typeof detailsText === 'object') {
+                        // It's already an object
+                        const detailsObj = detailsText as any;
+                        if (detailsObj && detailsObj.requestId) {
+                            requestId = parseInt(detailsObj.requestId.toString());
+                            console.log('Extracted requestId from object:', requestId);
+                        }
+                    }
+                } catch (e) {
+                    console.log('Failed to parse details as JSON:', e);
+                }
+                
+                // If JSON parsing failed, try regex patterns
+                if (!requestId && typeof detailsText === 'string') {
+                    // Try matching standard format with HTML bold tags
+                    const boldMatch = detailsText.match(/<b>requestId:<\/b>\s*(\d+)/i);
+                    if (boldMatch && boldMatch[1]) {
+                        requestId = parseInt(boldMatch[1]);
+                    }
+                    
+                    // Try matching without HTML tags
+                    if (!requestId) {
+                        const plainMatch = detailsText.match(/requestId:\s*(\d+)/i);
+                        if (plainMatch && plainMatch[1]) {
+                            requestId = parseInt(plainMatch[1]);
+                        }
+                    }
+                    
+                    // Try extracting from any #NUMBER pattern if nothing else worked
+                    if (!requestId) {
+                        const hashMatch = detailsText.match(/request\s+#(\d+)/i);
+                        if (hashMatch && hashMatch[1]) {
+                            requestId = parseInt(hashMatch[1]);
+                        }
+                    }
+                }
+                
+                console.log('Final extracted requestId:', requestId);
+                
+                if (requestId) {
+                    const requestIndex = requests.findIndex(r => r.id === requestId);
+                    
+                    if (requestIndex !== -1) {
+                        console.log('Found request at index:', requestIndex);
+                        // Update request status based on workflow status
+                        if (body.status === 'Approved') {
+                            requests[requestIndex].status = 'Approved';
+                            console.log('Updated request status to Approved');
+                        } else if (body.status === 'Rejected') {
+                            requests[requestIndex].status = 'Rejected';
+                            console.log('Updated request status to Rejected');
+                        } else if (body.status === 'Pending') {
+                            requests[requestIndex].status = 'Pending';
+                            console.log('Updated request status to Pending');
+                        }
+                    } else {
+                        console.log('Request not found with ID:', requestId);
+                    }
+                } else {
+                    console.log('Could not extract requestId from details:', detailsText);
+                }
+            }
+            
+            return ok(workflows[workflowIndex]);
+        }
+
+        // Request route functions
+        function getRequests() {
+            // Get all requests with employee details
+            const allRequests = requests.map(request => {
+                // Find employee
+                const employee = employees.find(e => e.id === request.employeeId);
+                
+                // Find user information if employee exists
+                let userEmail = 'Unknown';
+                let userRole = 'Unknown';
+                let user = null;
+                
+                if (employee && employee.userId) {
+                    user = accounts.find(a => a.id === employee.userId);
+                    if (user) {
+                        userEmail = user.email;
+                        userRole = user.role;
+                    }
+                }
+                
+                // Find department information if employee exists
+                const department = employee?.departmentId ? 
+                    departments.find(d => d.id === employee.departmentId) : null;
+                
+                // Return enhanced request with employee and user info
+                // Ensure both items and requestItems properties exist for frontend compatibility
+                const enhancedRequest: any = {
+                    ...request,
+                    Employee: employee ? { 
+                        ...employee,
+                        User: user ? {
+                            id: user.id,
+                            email: user.email,
+                            role: user.role
+                        } : null,
+                        Department: department ? {
+                            id: department.id,
+                            name: department.name
+                        } : null
+                    } : null,
+                    userEmail,
+                    userRole
+                };
+                
+                // Ensure both items and requestItems are available
+                if (!enhancedRequest.items && enhancedRequest.requestItems) {
+                    enhancedRequest.items = [...enhancedRequest.requestItems];
+                } else if (!enhancedRequest.requestItems && enhancedRequest.items) {
+                    enhancedRequest.requestItems = [...enhancedRequest.items];
+                } else if (!enhancedRequest.items && !enhancedRequest.requestItems) {
+                    // Initialize empty arrays for both if neither exists
+                    enhancedRequest.items = [];
+                    enhancedRequest.requestItems = [];
+                }
+                
+                return enhancedRequest;
+            });
+            
+            return ok(allRequests);
+        }
+
+        function getRequestById() {
+            const id = parseInt(path.split('/').pop()!);
+            const request = requests.find(r => r.id === id);
+            
+            if (!request) return error('Request not found');
+            
+            // Find employee
+            const employee = employees.find(e => e.id === request.employeeId);
+            
+            // Find user information if employee exists
+            let userEmail = 'Unknown';
+            let userRole = 'Unknown';
+            let user = null;
+            
+            if (employee && employee.userId) {
+                user = accounts.find(a => a.id === employee.userId);
+                if (user) {
+                    userEmail = user.email;
+                    userRole = user.role;
+                }
+            }
+            
+            // Return request with user and employee info
+            const enhancedRequest: any = {
+                ...request,
+                employee: employee ? { 
+                    id: employee.id, 
+                    employeeId: employee.employeeId 
+                } : null,
+                Employee: employee ? { 
+                    ...employee,
+                    User: user ? {
+                        id: user.id,
+                        email: user.email,
+                        role: user.role
+                    } : null
+                } : null,
+                userEmail,
+                userRole
+            };
+            
+            // Ensure both items and requestItems are available
+            if (!enhancedRequest.items && enhancedRequest.requestItems) {
+                enhancedRequest.items = [...enhancedRequest.requestItems];
+            } else if (!enhancedRequest.requestItems && enhancedRequest.items) {
+                enhancedRequest.requestItems = [...enhancedRequest.items];
+            } else if (!enhancedRequest.items && !enhancedRequest.requestItems) {
+                // Initialize empty arrays for both if neither exists
+                enhancedRequest.items = [];
+                enhancedRequest.requestItems = [];
+            }
+            
+            return ok(enhancedRequest);
+        }
+
+        function getRequestsByEmployeeId() {
+            const employeeIdParam = new URL(url).searchParams.get('employeeId');
+            if (!employeeIdParam) return error('Employee ID is required');
+            
+            const employeeId = parseInt(employeeIdParam);
+            if (isNaN(employeeId)) return error('Invalid employee ID');
+            
+            // Check if employee exists
+            const employee = employees.find(e => e.id === employeeId);
+            if (!employee) return error('Employee not found');
+            
+            // Get user information
+            const user = accounts.find(a => a.id === employee.userId);
+            let userEmail = 'Unknown';
+            let userRole = 'Unknown';
+            
+            if (user) {
+                userEmail = user.email;
+                userRole = user.role;
+            }
+            
+            // Get department information
+            const department = departments.find(d => d.id === employee.departmentId);
+            
+            // Filter requests by employee ID
+            const filteredRequests = requests.filter(r => r.employeeId === employeeId).map(request => {
+                const enhancedRequest: any = {
+                    ...request,
+                    Employee: { 
+                        ...employee,
+                        User: user ? {
+                            id: user.id,
+                            email: user.email,
+                            role: user.role
+                        } : null,
+                        Department: department ? {
+                            id: department.id,
+                            name: department.name
+                        } : null
+                    },
+                    userEmail,
+                    userRole
+                };
+                
+                // Ensure both items and requestItems are available
+                if (!enhancedRequest.items && enhancedRequest.requestItems) {
+                    enhancedRequest.items = [...enhancedRequest.requestItems];
+                } else if (!enhancedRequest.requestItems && enhancedRequest.items) {
+                    enhancedRequest.requestItems = [...enhancedRequest.items];
+                } else if (!enhancedRequest.items && !enhancedRequest.requestItems) {
+                    // Initialize empty arrays for both if neither exists
+                    enhancedRequest.items = [];
+                    enhancedRequest.requestItems = [];
+                }
+                
+                return enhancedRequest;
+            });
+            
+            return ok(filteredRequests);
+        }
+
+        function createRequest() {
+            const account = currentAccount();
+            if (!account) return unauthorized();
+            
+            // Use employeeId from body if provided (for admin users)
+            // Otherwise, find employee associated with current user
+            let employeeId;
+            if (body.employeeId && account.role === Role.Admin) {
+                // Admin users can create requests for any employee
+                employeeId = parseInt(body.employeeId);
+                
+                // Verify that the employee exists
+                const employeeExists = employees.some(e => e.id === employeeId);
+                if (!employeeExists) {
+                    return error('Selected employee not found');
+                }
+            } else {
+                // Regular users can only create requests for themselves
+                const employee = employees.find(e => e.userId === account.id);
+                if (!employee) {
+                    return error('No employee record found for current user');
+                }
+                employeeId = employee.id;
+            }
+            
+            // Find employee record for the request
+            const employee = employees.find(e => e.id === employeeId);
+            
+            // Process items from either items or requestItems property
+            const requestItems = [];
+            if (body.items && Array.isArray(body.items)) {
+                body.items.forEach(item => {
+                    requestItems.push({
+                        name: item.name,
+                        quantity: item.quantity || 1
+                    });
+                });
+            } else if (body.requestItems && Array.isArray(body.requestItems)) {
+                body.requestItems.forEach(item => {
+                    requestItems.push({
+                        name: item.name,
+                        quantity: item.quantity || 1
+                    });
+                });
+            }
+            
+            // Create request with proper structure
+            const request: any = { 
+                id: requests.length + 1,
+                employeeId: employeeId,
+                type: body.type || 'Equipment',
+                status: 'Pending',
+                items: [...requestItems],     // For backwards compatibility
+                requestItems: [...requestItems]  // For newer frontend implementations
+            };
+            
+            console.log('Creating new request:', request);
+            requests.push(request);
+            
+            // Create workflow entry for request approval
+            workflows.push({
+                id: workflows.length + 1,
+                employeeId: employeeId,
+                type: 'Request Approval',
+                details: JSON.stringify({
+                    requestId: request.id,
+                    requestType: request.type,
+                    requesterId: employeeId,
+                    message: `Review ${request.type} request #${request.id} from Employee ID ${employee.employeeId}.`
+                }),
+                status: 'Pending'
+            });
+            
+            return ok(request);
+        }
+
+        function updateRequest() {
+            const id = parseInt(path.split('/').pop()!);
+            const reqIndex = requests.findIndex(r => r.id === id);
+            
+            if (reqIndex === -1) return error('Request not found');
+            
+            // Log incoming request update
+            console.log('Updating request:', id, 'with data:', body);
+            
+            // Preserve the employeeId
+            const employeeId = requests[reqIndex].employeeId;
+            const oldStatus = requests[reqIndex].status;
+            
+            // Process items from either items or requestItems property
+            const requestItems = [];
+            if (body.items && Array.isArray(body.items)) {
+                body.items.forEach(item => {
+                    requestItems.push({
+                        name: item.name,
+                        quantity: item.quantity || 1
+                    });
+                });
+            } else if (body.requestItems && Array.isArray(body.requestItems)) {
+                body.requestItems.forEach(item => {
+                    requestItems.push({
+                        name: item.name,
+                        quantity: item.quantity || 1
+                    });
+                });
+            } else {
+                // If no items provided, keep existing ones
+                requestItems.push(...(requests[reqIndex].requestItems || []));
+            }
+            
+            // Update the request - prioritize any provided fields or keep the existing values
+            (requests[reqIndex] as any) = { 
+                id,
+                employeeId,
+                type: body.type || requests[reqIndex].type,
+                status: body.status || requests[reqIndex].status,
+                items: [...requestItems],     // For backwards compatibility
+                requestItems: [...requestItems]  // For newer frontend implementations
+            };
+            
+            console.log('Request updated:', requests[reqIndex]);
+            
+            // Find employee info for the workflow
+            const employee = employees.find(e => e.id === employeeId);
+            if (!employee) return error('Employee not found');
+            
+            // Create workflow entry if status changed
+            if (body.status && body.status !== oldStatus) {
+                workflows.push({
+                    id: workflows.length + 1,
+                    employeeId: employeeId,
+                    type: 'Request Status Updated',
+                    details: JSON.stringify({
+                        requestId: id,
+                        requestType: requests[reqIndex].type,
+                        requesterId: employeeId,
+                        message: `${requests[reqIndex].type} request #${id} from Employee ID ${employee.employeeId} was ${body.status.toLowerCase()}.`
+                    }),
+                    status: 'Completed'
+                });
+            } 
+            // Create workflow for request edits if items changed
+            else if (body.items || body.requestItems) {
+                workflows.push({
+                    id: workflows.length + 1,
+                    employeeId: employeeId,
+                    type: 'Request Approval',
+                    details: JSON.stringify({
+                        requestId: id,
+                        requestType: requests[reqIndex].type,
+                        requesterId: employeeId,
+                        message: `Review updated ${requests[reqIndex].type} request #${id} from Employee ID ${employee.employeeId}.`
+                    }),
+                    status: 'Pending'
+                });
+            }
+            
+            return ok(requests[reqIndex]);
+        }
+
+        function getNextEmployeeId() {
+            console.log('Fake backend: Getting next employee ID');
+            
+            // Find the highest employee ID number
+            let maxId = 0;
+            employees.forEach(emp => {
+                if (emp.employeeId && emp.employeeId.startsWith('EMP')) {
+                    const idNum = parseInt(emp.employeeId.substring(3));
+                    if (!isNaN(idNum) && idNum > maxId) {
+                        maxId = idNum;
+                    }
+                }
+            });
+            
+            // Generate the next ID (current max + 1)
+            const nextId = maxId + 1;
+            const nextEmployeeId = 'EMP' + nextId.toString().padStart(3, '0');
+            
+            console.log('Fake backend generated next employee ID:', nextEmployeeId);
+            return ok({ employeeId: nextEmployeeId });
+        }
+
+        // Helper functions
+        function ok(body?) {
+            return of(new HttpResponse({ status: 200, body }));
+        }
+
+        function error(message) {
+            return throwError(() => ({ error: { message } }));
+        }
+
+        function unauthorized() {
+            return throwError(() => ({ status: 401, error: { message: 'Unauthorized' } }));
+        }
+
+        function forbidden() {
+            return throwError(() => ({ status: 403, error: { message: 'Forbidden' } }));
+        }
+
+        function basicDetails(account) {
+            const { id, title, firstName, lastName, email, role, dateCreated, isVerified, status } = account;
+            return { id, title, firstName, lastName, email, role, dateCreated, isVerified, status };
+        }
+
+        function isAuthenticated() {
+            return !!currentAccount();
+        }
+
+        function isAuthorized(role) {
+            const account = currentAccount();
+            if (!account) return false;
+            return account.role === role;
+        }
+
+        function idFromUrl() {
+            const urlParts = path.split('/');
+            return parseInt(urlParts[urlParts.length - 1]);
+        }
+
+        function newAccountId() {
+            return accounts.length ? Math.max(...accounts.map(x => x.id)) + 1 : 1;
+        }
+
+        function currentAccount() {
+            // check if jwt token is in auth header
+            const authHeader = headers.get('Authorization');
+            if (!authHeader || !authHeader.startsWith('Bearer fake-jwt-token')) return;
+
+            // check if token is expired
+            const jwtToken = JSON.parse(atob(authHeader.split('.')[1]));
+            const tokenExpired = Date.now() > (jwtToken.exp * 1000);
+            if (tokenExpired) return;
+
+            const account = accounts.find(x => x.id === jwtToken.id);
+            return account;
+        }
+
+        function generateJwtToken(account) {
+            // create token that expires in 15 minutes
+            const tokenPayload = {
+                exp: Math.round(new Date(Date.now() + 15 * 60 * 1000).getTime() / 1000),
+                id: account.id
+            };
+            return `fake-jwt-token.${btoa(JSON.stringify(tokenPayload))}`;
+        }
+
+        function generateRefreshToken() {
+            const token = new Date().getTime().toString();
+
+            // add token cookie that expires in 7 days
+            const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString();
+            document.cookie = `fakeRefreshToken=${token}; expires=${expires}; path=/`;
+            return token;
+        }
+
+        function getRefreshToken() {
+            // get refresh token from cookie
+            return (document.cookie.split(';').find(x => x.includes('fakeRefreshToken')) || '=').split('=')[1];
+        }
+
+        function authorize(requiredRole: Role | null, success: () => Observable<HttpEvent<any>>) {
+            if (!isAuthenticated()) return unauthorized();
+            if (requiredRole && !isAuthorized(requiredRole)) return forbidden();
+            return success();
         }
     }
 }

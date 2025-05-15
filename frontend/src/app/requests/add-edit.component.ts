@@ -13,7 +13,7 @@ import { AlertService } from '@app/_services/alert.service';
 import { WorkflowService } from '@app/_services/workflow.service';
 import { AccountService } from '@app/_services/account.service';
 import { Account, Role } from '@app/_models';
-import { AppRequest } from '@app/_helpers';
+import { AppRequest, RequestStatus } from '@app/_models/request';
 import { Workflow, WorkflowStatus, WorkflowType } from '@app/_models/workflow';
 import { Employee } from '@app/_models/employee';
 
@@ -55,14 +55,17 @@ export class RequestAddEditComponent implements OnInit {
     this.id = this.route.snapshot.params['id'];
     this.isAddMode = !this.id;
 
+    // Check for employeeId in query params
+    const employeeIdFromQuery = this.route.snapshot.queryParams['employeeId'];
+
     this.form = this.formBuilder.group({
       type: ['Equipment', Validators.required],
-      // Pre-fill employeeId if adding and current user has an employeeId, otherwise null
-      employeeId: [this.isAddMode ? (this.currentAccount?.id || null) : null, Validators.required],
+      // Don't pre-fill employeeId when in add mode unless it's in query params
+      employeeId: [null, Validators.required],
       requestItems: this.formBuilder.array([], [Validators.required, Validators.minLength(1)]) // Ensure at least one item
     });
 
-    this.loadEmployeesForDropdown();
+    this.loadEmployeesForDropdown(employeeIdFromQuery);
 
     if (!this.isAddMode && this.id) {
       this.loadRequestData();
@@ -75,8 +78,12 @@ export class RequestAddEditComponent implements OnInit {
 
     // If in add mode and current user is NOT an admin AND their employeeId is set, disable the field.
     // This means non-admins can only create requests for themselves.
-    if (this.isAddMode && this.currentAccount?.role !== Role.Admin && this.f.employeeId.value) {
-      this.f.employeeId.disable();
+    if (this.isAddMode && this.currentAccount?.role !== Role.Admin && this.currentAccount?.id && !employeeIdFromQuery) {
+      const currentEmpForDropdown = this.employeesForDropdown.find(e => e.id === Number(this.currentAccount?.id));
+      if (currentEmpForDropdown) {
+        this.form.patchValue({ employeeId: currentEmpForDropdown.id });
+        this.f.employeeId.disable();
+      }
     }
   }
 
@@ -84,7 +91,7 @@ export class RequestAddEditComponent implements OnInit {
   get f(): { [key: string]: AbstractControl } { return this.form.controls; }
   get requestItems(): FormArray { return this.form.get('requestItems') as FormArray; }
 
-  loadEmployeesForDropdown() {
+  loadEmployeesForDropdown(employeeIdFromQuery?: string) {
     this.employeeService.getAll()
       .pipe(first())
       .subscribe({
@@ -102,8 +109,20 @@ export class RequestAddEditComponent implements OnInit {
             };
           });
 
-          // If in add mode, not an admin, and current user has an employeeId, try to preselect and disable.
-          if (this.isAddMode && this.currentAccount?.role !== Role.Admin && this.currentAccount?.id) {
+          // If employeeId is in query params, pre-select and possibly disable it
+          if (employeeIdFromQuery) {
+            const selectedEmp = this.employeesForDropdown.find(e => e.id === Number(employeeIdFromQuery));
+            if (selectedEmp) {
+              this.form.patchValue({ employeeId: selectedEmp.id });
+              
+              // Disable field if not admin (non-admins can't change the employee)
+              if (this.currentAccount?.role !== Role.Admin) {
+                this.f.employeeId.disable();
+              }
+            }
+          }
+          // Only auto-select for non-admins who should only create requests for themselves
+          else if (this.isAddMode && this.currentAccount?.role !== Role.Admin && this.currentAccount?.id) {
             const currentEmpForDropdown = this.employeesForDropdown.find(e => e.id === Number(this.currentAccount?.id));
             if (currentEmpForDropdown) {
               this.form.patchValue({ employeeId: currentEmpForDropdown.id });
@@ -130,7 +149,10 @@ export class RequestAddEditComponent implements OnInit {
             employeeId: appRequest.employeeId // This should be the Employee.id
           });
           this.requestItems.clear();
-          appRequest.requestItems.forEach((item: { name: string, quantity: number }) => {
+          
+          // Handle both requestItems and items properties
+          const items = appRequest.requestItems || appRequest.items || [];
+          items.forEach((item: { name: string, quantity: number }) => {
             this.requestItems.push(this.createItemFormGroup(item.name, item.quantity));
           });
           this.loading = false;
@@ -170,8 +192,8 @@ export class RequestAddEditComponent implements OnInit {
     this.alertService.clear();
 
     if (this.form.invalid) {
-      this.form.markAllAsTouched(); // Show errors on all fields
-      if (this.requestItems.length === 0) { // Specific check for FormArray
+      this.form.markAllAsTouched();
+      if (this.requestItems.length === 0) {
         this.alertService.error('At least one item is required.');
       }
       return;
@@ -180,19 +202,22 @@ export class RequestAddEditComponent implements OnInit {
     if (this.loading) return;
     this.loading = true;
 
-    // Use getRawValue() to include values from disabled controls (like employeeId for non-admins)
     const formValue = this.form.getRawValue();
     const requestData: AppRequest = {
       type: formValue.type,
-      employeeId: Number(formValue.employeeId), // Ensure employeeId is a number
-      requestItems: formValue.requestItems,
-      status: 'Pending Approval' // Initial status when creating
+      employeeId: Number(formValue.employeeId),
+      items: formValue.requestItems.map((item: any) => ({
+        name: item.name,
+        quantity: item.quantity
+      })),
+      status: RequestStatus.Pending,
+      description: `Request for ${formValue.type}`,
+      requestNumber: `REQ-${Date.now()}`
     };
 
     if (this.isAddMode) {
       this.createRequestWithWorkflow(requestData);
     } else if (this.id) {
-      // If updating, also pass the original request ID for the service
       this.updateRequest(this.id, requestData);
     }
   }
@@ -212,7 +237,9 @@ export class RequestAddEditComponent implements OnInit {
           ? `${employeeWhoMadeRequest.employeeId}`
           : `Employee ID ${createdRequest.employeeId}`;
 
-        const itemsSummary = createdRequest.requestItems.map(it => `${it.name} (x${it.quantity})`).join(', ');
+        // Use requestItems if available, otherwise fallback to items to handle both formats
+        const items = createdRequest.requestItems || createdRequest.items || [];
+        const itemsSummary = items.map(it => `${it.name} (x${it.quantity})`).join(', ');
 
         // --- !!! IMPORTANT: Determine Approver Logic !!! ---
         // This is a placeholder. You need logic to find the correct approver's Employee ID.
@@ -243,7 +270,6 @@ export class RequestAddEditComponent implements OnInit {
       .subscribe({
         next: (workflow) => {
           if (workflow) { // Check if workflow creation was successful (not caught by catchError)
-            this.alertService.success('Request submitted and approval workflow created!', { keepAfterRouteChange: true });
             this.router.navigate(['/admin/requests']); // Adjust path to your requests list
           }
           // Loading is set to false in catchError or here

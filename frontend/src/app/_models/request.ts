@@ -10,6 +10,7 @@ export enum RequestStatus {
     Draft = 'Draft',
     Submitted = 'Submitted',
     InProgress = 'In Progress',
+    Pending = 'Pending',
     Approved = 'Approved',
     Rejected = 'Rejected',
     Completed = 'Completed',
@@ -19,23 +20,26 @@ export enum RequestStatus {
 export interface RequestItem {
     id?: string;
     name: string;
-    type: string;
-    quantity?: number;
+    type?: string;
+    quantity: number;
     startDate?: Date;
     endDate?: Date;
     notes?: string;
-    status: RequestStatus;
+    status?: RequestStatus;
 }
 
 export interface Request {
-    id?: string;
-    requestNumber: string;
+    id?: number;
+    requestNumber?: string;
     employeeId: number;
     employee?: Employee;
-    description: string;
+    description?: string;
     type: string;
     status: string;
-    items: any[];
+    items: RequestItem[];
+    requestItems?: RequestItem[];
     createdDate?: Date;
     lastModifiedDate?: Date;
-} 
+}
+
+export type AppRequest = Request; 

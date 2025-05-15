@@ -1,69 +1,70 @@
 import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
-import { AccountService } from '@app/_services';
+import { Router, ActivatedRoute } from '@angular/router';
 import { first } from 'rxjs/operators';
-import { AlertService } from '@app/_services';
 
+import { EmployeeService, DepartmentService } from '@app/_services';
+import { Employee } from '@app/_models/employee';
+import { Department } from '@app/_models/department';
 
-@Component({
-  selector: 'app-employee-transfer',
-  templateUrl: './transfer.component.html'
-})
+@Component({ templateUrl: 'transfer.component.html' })
 export class TransferComponent implements OnInit {
-  employee: any;
-  departments: any[] = [];
-  departmentId: number | null = null;
-  alertService: any;
+    employee: Employee;
+    departments: Department[] = [];
+    departmentId: number;
+    loading = false;
+    submitted = false;
+    error = '';
 
-  constructor(
-    private route: ActivatedRoute,
-    private router: Router,
-    private accountService: AccountService
-  ) { }
+    constructor(
+        private route: ActivatedRoute,
+        private router: Router,
+        private employeeService: EmployeeService,
+        private departmentService: DepartmentService
+    ) { }
 
-  ngOnInit() {
-    const id = this.route.snapshot.params['id'];
+    ngOnInit() {
+        this.loading = true;
+        const id = this.route.snapshot.params['id'];
 
-    // Load employee details
-    this.accountService.getEmployeeById(id)
-      .pipe(first())
-      .subscribe(employee => {
-        this.employee = employee;
-        this.departmentId = employee.department?.id; // Set current department
-      });
+        // Load employee details
+        this.employeeService.getById(id)
+            .pipe(first())
+            .subscribe({
+                next: (employee) => {
+                    this.employee = employee;
+                    this.departmentId = Number(employee.departmentId);
+                    this.loading = false;
+                },
+                error: error => {
+                    this.error = error;
+                    this.loading = false;
+                }
+            });
 
-    // Load all departments
-    this.accountService.getAllDepartments()
-      .pipe(first())
-      .subscribe(departments => this.departments = departments);
-  }
-
-  transfer() {
-    if (!this.departmentId || !this.employee || this.employee.id === undefined) {
-      console.error('Employee data or department ID is missing for transfer.');
-      this.alertService.error('Cannot perform transfer: employee data is missing.'); // Add AlertService if not already used
-      return;
+        // Load departments
+        this.departmentService.getAll()
+            .pipe(first())
+            .subscribe(departments => this.departments = departments);
     }
 
-    // Ensure departmentId is a number if your service expects it
-    const numericDepartmentId = typeof this.departmentId === 'string' ? parseInt(this.departmentId, 10) : this.departmentId;
-    if (isNaN(numericDepartmentId)) {
-      this.alertService.error('Invalid department selected.');
-      return;
+    onSubmit() {
+        this.submitted = true;
+        this.loading = true;
+
+        this.employeeService.transfer(this.employee.id.toString(), this.departmentId)
+            .pipe(first())
+            .subscribe({
+                next: () => {
+                    this.router.navigate(['/employees']);
+                },
+                error: error => {
+                    this.error = error;
+                    this.loading = false;
+                }
+            });
     }
 
-    this.accountService.updateEmployee(this.employee.id, {
-      departmentId: this.departmentId
-    })
-      .pipe(first())
-      .subscribe(() => {
-        this.router.navigate(['/employees'], {
-          state: { message: 'Employee transferred successfully' }
-        });
-      });
-  }
-
-  cancel() {
-    this.router.navigate(['/employees']);
-  }
-}
+    cancel() {
+        this.router.navigate(['/employees']);
+    }
+} 

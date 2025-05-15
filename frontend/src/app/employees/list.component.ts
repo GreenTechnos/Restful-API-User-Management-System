@@ -1,13 +1,15 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ViewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { AccountService, EmployeeService } from '@app/_services';
 import { first } from 'rxjs/operators';
 import { Account, Role } from '@app/_models';
+import { TransferModalComponent } from './transfer-modal.component';
 
 @Component({
   templateUrl: 'list.component.html' // assuming the template is in list.component.html
 })
 export class ListComponent implements OnInit {
+  @ViewChild('transferModal') transferModal: TransferModalComponent;
   employees: any[] = [];
   account = this.accountService.accountValue;
   currentAccount: Account | null = null;
@@ -27,7 +29,7 @@ export class ListComponent implements OnInit {
     this.loadAllEmployees();
   }
 
-  private loadAllEmployees() {
+  loadAllEmployees() {
     this.employeeService.getAll() // Changed to use EmployeeService.getAll()
       .pipe(first())
       .subscribe(employees => this.employees = employees);
@@ -42,8 +44,8 @@ export class ListComponent implements OnInit {
     this.router.navigate(['/admin/workflows'], { queryParams: { employeeId: id } });
   }
 
-  transfer(employeeId: string) { // Renamed parameter for clarity
-    this.router.navigate(['/admin/employees/transfer', employeeId]); // Assumed admin path
+  openTransferModal(employeeId: string) {
+    this.transferModal.open(employeeId);
   }
 
   edit(employeeId: string) { // Renamed parameter

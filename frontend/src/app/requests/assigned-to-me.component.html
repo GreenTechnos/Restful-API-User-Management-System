@@ -26,9 +26,9 @@
                     </td>
                     <td>
                         <span [ngClass]="{
-                            'badge bg-success': request.status === 'Completed',
-                            'badge bg-danger': request.status === 'Rejected' || request.status === 'Cancelled',
-                            'badge bg-warning': request.status === 'Pending',
+                            'badge bg-success': request.status === 'Completed' || request.status === 'Approved' || request.status === 'Approve',
+                            'badge bg-danger': request.status === 'Rejected' || request.status === 'Reject' || request.status === 'Cancelled',
+                            'badge bg-warning text-dark': request.status === 'Pending',
                             'badge bg-info': request.status === 'In Progress'
                         }">
                             {{request.status}}
