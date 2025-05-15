@@ -1,0 +1,36 @@
+<div class="card">
+  <div class="card-header">Requests</div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Employee</th>
+            <th>Items</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let request of requests">
+            <td>{{request.type}}</td>
+            <td>{{request.employeeId}}</td>
+            <td>
+              <ul class="list-unstyled mb-0">
+                <li *ngFor="let item of request.requestItems">
+                  {{item.name}} (x{{item.quantity}})
+                </li>
+              </ul>
+            </td>
+            <td>{{request.status}}</td>
+            <td>
+              <button class="btn btn-sm btn-primary me-1" [routerLink]="['edit', request.id]">Edit</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <a routerLink="add" class="btn btn-sm btn-success">Add Request</a>
+  </div>
+</div>
