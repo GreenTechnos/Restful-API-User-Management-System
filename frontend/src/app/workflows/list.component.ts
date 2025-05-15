@@ -1,106 +1,149 @@
-import { Component, OnInit, ViewChild } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { first } from 'rxjs/operators';
-
+import { Subscription } from 'rxjs';
 import { WorkflowService, AlertService, AccountService, EmployeeService } from '@app/_services';
 import { Account, Role } from '@app/_models';
-import { WorkflowStatus } from '@app/_models/workflow';
+import { WorkflowStatus, Workflow } from '@app/_models/workflow';
 import { ConfirmModalComponent } from './confirm-modal.component';
+import { Employee } from '@app/_models/employee';
+import { HttpErrorResponse } from '@angular/common/http';
 
 @Component({ templateUrl: 'list.component.html' })
-export class ListWorkflowComponent implements OnInit {
+export class ListWorkflowComponent implements OnInit, OnDestroy {
   @ViewChild('confirmModal') confirmModal!: ConfirmModalComponent;
-  workflows = null;
+  workflows: Workflow[] = [];
   loading = false;
+  currentAccount: Account | null = null;
   isAdmin = false;
   employeeId: string | null = null;
   displayEmployeeId: string | null = null;
-  employeeFullName: string | null = null;
   confirmMessage: string = '';
   notFound = false;
   private pendingStatusChange: { id: string; status: WorkflowStatus } | null = null;
+  employeeIdFromQuery: string | null = null;
+  employeeDetails: Employee | null = null;
 
+  private queryParamsSubscription!: Subscription;
+  private statusUpdateWorkflow: Workflow | null = null;
   // Make enum available in template
   WorkflowStatus = WorkflowStatus;
+  Role = Role;
 
   constructor(
     private workflowService: WorkflowService,
     private alertService: AlertService,
     private accountService: AccountService,
     private employeeService: EmployeeService,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private router: Router
   ) {
-    this.isAdmin = this.accountService.accountValue?.role === Role.Admin;
+    this.currentAccount = this.accountService.accountValue;
+    this.isAdmin = this.currentAccount?.role === Role.Admin;
+  }
+  private subscriptions: Subscription[] = [];
 
-    // Get employeeId from query params
-    this.route.queryParams.subscribe(params => {
-      this.employeeId = params['employeeid'];
-      if (this.employeeId) {
-        this.loadEmployee();
-        this.loadWorkflows();
+  ngOnDestroy(): void {
+    // Unsubscribe from all subscriptions to prevent memory leaks
+    this.subscriptions.forEach(sub => sub.unsubscribe());
+  }
+
+  ngOnInit() {
+    this.queryParamsSubscription = this.route.queryParams.subscribe(params => {
+      this.employeeIdFromQuery = params['employeeId'];
+      this.workflows = [];
+      this.employeeDetails = null;
+
+      if (this.employeeIdFromQuery) {
+        this.loadEmployeeDetails(this.employeeIdFromQuery);
+        this.loadWorkflowsForEmployee(this.employeeIdFromQuery);
+      } else if (this.isAdmin) {
+        this.loadAllWorkflows();
       } else {
-        this.notFound = false;
-        this.loadWorkflows();
+
+        const currentEmployeeId = this.employeeId;
+        if (currentEmployeeId) {
+          this.employeeIdFromQuery = String(currentEmployeeId);
+          this.loadEmployeeDetails(String(currentEmployeeId));
+          this.loadWorkflowsForEmployee(String(currentEmployeeId));
+        } else {
+          this.alertService.info("No employee specified, and your account is not linked to an employee record.");
+          this.loading = false;
+        }
       }
     });
   }
 
-  ngOnInit() {
-    this.loadWorkflows();
-  }
-
-  public get currentAccount(): Account | null {
-    return this.accountService.accountValue;
-  }
-
-  private loadEmployee() {
-    if (!this.employeeId) return;
-
-    this.employeeService.getById(this.employeeId)
+  loadEmployeeDetails(employeeId: string) {
+    this.employeeService.getById(employeeId)
       .pipe(first())
       .subscribe({
-        next: (employee) => {
-          if (employee && employee.account) {
-            this.displayEmployeeId = employee.employeeId;
-            const firstName = employee.account.firstName.charAt(0).toUpperCase() + employee.account.firstName.slice(1).toLowerCase();
-            const lastName = employee.account.lastName.charAt(0).toUpperCase() + employee.account.lastName.slice(1).toLowerCase();
-            this.employeeFullName = `${firstName} ${lastName}`;
-          }
+        next: (employee) => this.employeeDetails = employee,
+        error: (err) => this.alertService.error(this.formatError(err, 'Failed to load employee details'))
+      });
+  }
+
+  loadWorkflowsForEmployee(employeeId: string) {
+    this.loading = true;
+    this.workflowService.getByEmployeeId(employeeId)
+      .pipe(first())
+      .subscribe({
+        next: (workflows) => {
+          this.workflows = this.sortWorkflows(workflows);
+          this.loading = false;
         },
-        error: error => {
-          this.alertService.error(error);
+        error: (err) => {
+          this.alertService.error(this.formatError(err, `Failed to load workflows for employee ${employeeId}`));
+          this.workflows = [];
+          this.loading = false;
         }
       });
   }
 
-  private loadWorkflows() {
+  loadAllWorkflows() {
     this.loading = true;
-    let request;
-
-    if (this.employeeId) {
-      request = this.workflowService.getByEmployeeId(this.employeeId);
-    } else {
-      request = this.workflowService.getAll();
-    }
-
-    request.pipe(first())
+    this.workflowService.getAll()
+      .pipe(first())
       .subscribe({
-        next: (workflows: any) => {
-          // Sort workflows by date in descending order
-          this.workflows = workflows.sort((a: any, b: any) => {
-            const dateA = new Date(a.datetimecreated).getTime();
-            const dateB = new Date(b.datetimecreated).getTime();
-            return dateB - dateA;
-          });
+        next: (workflows) => {
+          this.workflows = this.sortWorkflows(workflows);
           this.loading = false;
-          this.notFound = false;
         },
-        error: error => {
-          if (error.status === 404) {
-            this.notFound = true;
-          }
-          this.alertService.error(error);
+        error: (err) => {
+          this.alertService.error(this.formatError(err, 'Failed to load all workflows'));
+          this.workflows = [];
           this.loading = false;
+        }
+      });
+  }
+
+  private sortWorkflows(workflows: Workflow[]): Workflow[] {
+    return workflows.sort((a, b) => {
+      const dateA = new Date(a.datetimecreated || 0).getTime();
+      const dateB = new Date(b.datetimecreated || 0).getTime();
+      return dateB - dateA;
+    });
+  }
+
+  onStatusSelected(workflow: Workflow, newStatus: WorkflowStatus | string) {
+    console.log(`Status change selected for workflow ${workflow.id} to ${newStatus}`);
+    this.updateWorkflowStatus(workflow, newStatus as WorkflowStatus);
+  }
+
+  updateWorkflowStatus(workflow: Workflow, newStatus: WorkflowStatus) {
+    if (!workflow || !workflow.id) return;
+    this.workflowService.changeStatus(workflow.id, newStatus)
+      .pipe(first())
+      .subscribe({
+        next: (updatedWorkflow) => {
+          const index = this.workflows.findIndex(w => w.id === updatedWorkflow.id);
+          if (index !== -1) {
+            this.workflows[index] = { ...this.workflows[index], ...updatedWorkflow };
+          }
+          this.alertService.success('Workflow status updated successfully!');
+        },
+        error: (err) => {
+          this.alertService.error(this.formatError(err, 'Failed to update workflow status'));
         }
       });
   }
@@ -158,5 +201,39 @@ export class ListWorkflowComponent implements OnInit {
           }
         });
     }
+  }
+
+  getDetailsAsObject(details: any): { key: string, value: any }[] {
+    return Object.entries(details || {}).map(([key, value]) => ({ key, value }));
+  }
+
+  isPendingOrReviewing(status: string): boolean {
+    return status === WorkflowStatus.Pending || status === WorkflowStatus.ForReviewing;
+  }
+
+  isCompletedOrApproved(status: string): boolean {
+    return status === WorkflowStatus.Completed || status === WorkflowStatus.Approved;
+  }
+
+  isRejected(status: string): boolean {
+    return status === WorkflowStatus.Rejected;
+  }
+
+  canChangeStatus(status: string): boolean {
+    return !(status === WorkflowStatus.Completed || status === WorkflowStatus.Rejected);
+  }
+
+  goBackToEmployees() {
+    this.router.navigate(['/admin/employees']);
+  }
+  goBackToAdminDashboard() {
+    this.router.navigate(['/admin']); // Or your main admin overview page
+  }
+
+  private formatError(error: HttpErrorResponse | Error, defaultMessage: string): string {
+    if (error instanceof HttpErrorResponse) {
+      return error.error?.message || error.message || defaultMessage;
+    }
+    return error.message || defaultMessage;
   }
 } 

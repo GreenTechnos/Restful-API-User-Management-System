@@ -5,7 +5,7 @@ import { AccountService } from '@app/_services/account.service';
 import { AlertService } from '@app/_services/alert.service';
 
 @Component({
-  templateUrl: 'add-edit.component.html'
+    templateUrl: 'add-edit.component.html'
 })
 export class AddEditEmployeeComponent implements OnInit {
     employee: any = {

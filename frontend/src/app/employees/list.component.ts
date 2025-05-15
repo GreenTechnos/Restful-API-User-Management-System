@@ -10,7 +10,9 @@ import { Account, Role } from '@app/_models';
 export class ListComponent implements OnInit {
   employees: any[] = [];
   account = this.accountService.accountValue;
+  currentAccount: Account | null = null;
   Role = Role;
+  isAdmin = false;
 
   constructor(
     private router: Router,
@@ -18,6 +20,7 @@ export class ListComponent implements OnInit {
     private employeeService: EmployeeService
   ) {
     this.account = this.accountService.accountValue;
+    this.isAdmin = this.currentAccount?.role === Role.Admin;
   }
 
   ngOnInit() {
@@ -35,6 +38,7 @@ export class ListComponent implements OnInit {
   }
 
   viewWorkflows(id: string) {
+    console.log("viewWorkflows called with id:", id);
     this.router.navigate(['/admin/workflows'], { queryParams: { employeeId: id } });
   }
 

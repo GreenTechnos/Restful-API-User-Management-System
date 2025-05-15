@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AccountService } from '@app/_services';
 import { first } from 'rxjs/operators';
+import { AlertService } from '@app/_services';
 
 
 @Component({
@@ -11,7 +12,8 @@ import { first } from 'rxjs/operators';
 export class TransferComponent implements OnInit {
   employee: any;
   departments: any[] = [];
-  departmentId: string;
+  departmentId: number | null = null;
+  alertService: any;
 
   constructor(
     private route: ActivatedRoute,
@@ -37,7 +39,18 @@ export class TransferComponent implements OnInit {
   }
 
   transfer() {
-    if (!this.departmentId) return;
+    if (!this.departmentId || !this.employee || this.employee.id === undefined) {
+      console.error('Employee data or department ID is missing for transfer.');
+      this.alertService.error('Cannot perform transfer: employee data is missing.'); // Add AlertService if not already used
+      return;
+    }
+
+    // Ensure departmentId is a number if your service expects it
+    const numericDepartmentId = typeof this.departmentId === 'string' ? parseInt(this.departmentId, 10) : this.departmentId;
+    if (isNaN(numericDepartmentId)) {
+      this.alertService.error('Invalid department selected.');
+      return;
+    }
 
     this.accountService.updateEmployee(this.employee.id, {
       departmentId: this.departmentId
