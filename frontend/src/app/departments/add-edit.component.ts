@@ -3,10 +3,12 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { AccountService } from '@app/_services/account.service';
 import { AlertService } from '@app/_services/alert.service';
 import { first } from 'rxjs/operators';
+import { FormBuilder, FormGroup, Validators, AbstractControl } from '@angular/forms';
 
 @Component({ templateUrl: 'add-edit.component.html' })
 
 export class AddEditDepartmentComponent implements OnInit {
+    form!: FormGroup;
     department: any = {
         name: '',
         description: ''
@@ -18,6 +20,7 @@ export class AddEditDepartmentComponent implements OnInit {
     submitted = false;
 
     constructor(
+        private formBuilder: FormBuilder,
         private route: ActivatedRoute,
         private router: Router,
         private accountService: AccountService,
@@ -28,13 +31,19 @@ export class AddEditDepartmentComponent implements OnInit {
         this.id = this.route.snapshot.params['id'];
         this.isAddMode = !this.id;
 
+        // Initialize form with validation
+        this.form = this.formBuilder.group({
+            name: ['', Validators.required],
+            description: ['', Validators.required]
+        });
+
         if (!this.isAddMode) {
             this.loading = true;
             this.accountService.getDepartmentById(this.id)
                 .pipe(first())
                 .subscribe({
                     next: (department) => {
-                        this.department = department;
+                        this.form.patchValue(department);
                         this.loading = false;
                     },
                     error: (error) => {
@@ -45,9 +54,17 @@ export class AddEditDepartmentComponent implements OnInit {
         }
     }
 
+    // Convenience getter for easy access to form fields
+    get f(): { [key: string]: AbstractControl } { return this.form.controls; }
+
     save() {
         this.submitted = true;
         this.alertService.clear();
+
+        // Stop here if form is invalid
+        if (this.form.invalid) {
+            return;
+        }
 
         if (this.loading) {
             return;
@@ -62,7 +79,7 @@ export class AddEditDepartmentComponent implements OnInit {
     }
 
     private createDepartment() {
-        this.accountService.createDepartment(this.department)
+        this.accountService.createDepartment(this.form.value)
             .pipe(first())
             .subscribe({
                 next: () => {
@@ -77,7 +94,7 @@ export class AddEditDepartmentComponent implements OnInit {
     }
 
     private updateDepartment() {
-        this.accountService.updateDepartment(this.id, this.department)
+        this.accountService.updateDepartment(this.id, this.form.value)
             .pipe(first())
             .subscribe({
                 next: () => {
@@ -92,6 +109,10 @@ export class AddEditDepartmentComponent implements OnInit {
     }
 
     cancel() {
-        this.router.navigate(['/departments']);
+        if (this.isAddMode) {
+            this.router.navigate(['../'], { relativeTo: this.route });
+        } else {
+            this.router.navigate(['../../'], { relativeTo: this.route });
+        }
     }
 }

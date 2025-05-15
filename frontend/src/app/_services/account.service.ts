@@ -108,7 +108,17 @@ export class AccountService {
     private employeesUrl = `${environment.apiUrl}/employees`;
 
     getAllUsers(): Observable<any[]> {
-        return this.http.get<any[]>(`${baseUrl}/users`);
+        return this.http.get<any[]>(`${baseUrl}`).pipe(
+            map(accounts => {
+                console.log('Fetched accounts:', accounts);
+                return accounts.map(account => ({
+                    id: account.id,
+                    email: account.email,
+                    role: account.role,
+                    fullName: `${account.firstName || ''} ${account.lastName || ''}`.trim()
+                }));
+            })
+        );
     }
 
     getEmployeeById(id: string): Observable<any> {
@@ -208,6 +218,10 @@ export class AccountService {
 
     private stopRefreshTokenTimer() {
         clearTimeout(this.refreshTokenTimeout);
+    }
+
+    getNextEmployeeId(): Observable<{ employeeId: string }> {
+        return this.http.get<{ employeeId: string }>(`${this.employeesUrl}/nextId`);
     }
 
 }

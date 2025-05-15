@@ -3,7 +3,7 @@
     "host": "localhost",
     "port": 3306,
     "user": "root",
-    "password": "1234",
+    "password": "",
     "database": "management"
   },
   "secret": "E9g$2kL8#pXq5!RnW7vY4*zZb6@dF1jH3mPcQs",
@@ -12,8 +12,8 @@
     "host": "smtp.ethereal.email",
     "port": 587,
     "auth": {
-      "user": "ronaldo.lakin@ethereal.email",
-      "pass": "j9SjsQHVq2Juc7zkQj"
+      "user": "guadalupe23@ethereal.email",
+      "pass": "6UubvktEYTBeZNJpan"
     }
   }
 }

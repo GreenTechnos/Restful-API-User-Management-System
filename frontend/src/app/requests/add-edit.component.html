@@ -29,7 +29,7 @@
         <label for="employeeId" class="form-label">Employee</label>
         <select id="employeeId" formControlName="employeeId" class="form-select"
           [ngClass]="{ 'is-invalid': submitted && f.employeeId.errors }">
-          <option [ngValue]="null" disabled>Select Employee</option> <!-- Placeholder -->
+          <option [ngValue]="null">-- Select Employee --</option>
           <option *ngFor="let emp of employeesForDropdown" [ngValue]="emp.id">
             {{ emp.employeeId }}
           </option>
@@ -63,7 +63,8 @@
                   <div *ngIf="itemGroup.get('quantity')?.errors?.min">Quantity must be at least 1</div>
                 </div>
               </div>
-              <div class="col-md-2 d-flex align-items-end mt-3 mt-md-0">
+              <div class="col-md-2">
+                <label class="form-label small d-block">&nbsp;</label>
                 <button type="button" class="btn btn-danger btn-sm w-100" (click)="removeItem(i)" title="Remove Item">
                   Remove
                 </button>

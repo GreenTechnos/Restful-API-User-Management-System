@@ -24,8 +24,9 @@
                             'bg-secondary': request.status === 'Draft',
                             'bg-primary': request.status === 'Submitted',
                             'bg-info': request.status === 'In Progress',
-                            'bg-success': request.status === 'Approved',
-                            'bg-danger': request.status === 'Rejected',
+                            'bg-warning text-dark': request.status === 'Pending',
+                            'bg-success': request.status === 'Approved' || request.status === 'Approve',
+                            'bg-danger': request.status === 'Rejected' || request.status === 'Reject',
                             'bg-dark': request.status === 'Completed'
                         }">{{request.status}}</span>
                     </td>

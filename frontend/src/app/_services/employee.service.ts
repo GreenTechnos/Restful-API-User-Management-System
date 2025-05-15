@@ -41,6 +41,10 @@ export class EmployeeService {
             .pipe(map(employee => this.mapDepartmentName(employee)));
     }
 
+    getWithDetails(id: string) {
+        return this.http.get<Employee>(`${environment.apiUrl}/employees/${id}/with-details`);
+    }
+
     create(employee: Employee) {
         return this.http.post<Employee>(`${environment.apiUrl}/employees`, employee)
             .pipe(map(employee => this.mapDepartmentName(employee)));
@@ -69,6 +73,10 @@ export class EmployeeService {
                 if (id === this.employeeValue?.id)
                     this.employeeSubject.next(null);
             }));
+    }
+
+    transfer(id: string, departmentId: number) {
+        return this.http.post<any>(`${environment.apiUrl}/employees/${id}/transfer`, { departmentId });
     }
 
     private mapDepartmentName(employee: Employee): Employee {

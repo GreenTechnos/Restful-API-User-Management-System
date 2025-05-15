@@ -4,7 +4,7 @@ import { first } from 'rxjs/operators';
 import { Subscription } from 'rxjs';
 import { WorkflowService, AlertService, AccountService, EmployeeService } from '@app/_services';
 import { Account, Role } from '@app/_models';
-import { WorkflowStatus, Workflow } from '@app/_models/workflow';
+import { WorkflowStatus, Workflow, WorkflowType } from '@app/_models/workflow';
 import { ConfirmModalComponent } from './confirm-modal.component';
 import { Employee } from '@app/_models/employee';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -89,7 +89,11 @@ export class ListWorkflowComponent implements OnInit, OnDestroy {
       .pipe(first())
       .subscribe({
         next: (workflows) => {
-          this.workflows = this.sortWorkflows(workflows);
+          // Filter out task-only RequestApproval workflows
+          const filteredWorkflows = workflows.filter(workflow => 
+            !(this.isRequestApprovalType(workflow.type) && this.isTaskOnlyWorkflow(workflow.details))
+          );
+          this.workflows = this.sortWorkflows(filteredWorkflows);
           this.loading = false;
         },
         error: (err) => {
@@ -106,7 +110,11 @@ export class ListWorkflowComponent implements OnInit, OnDestroy {
       .pipe(first())
       .subscribe({
         next: (workflows) => {
-          this.workflows = this.sortWorkflows(workflows);
+          // Filter out task-only RequestApproval workflows
+          const filteredWorkflows = workflows.filter(workflow => 
+            !(this.isRequestApprovalType(workflow.type) && this.isTaskOnlyWorkflow(workflow.details))
+          );
+          this.workflows = this.sortWorkflows(filteredWorkflows);
           this.loading = false;
         },
         error: (err) => {
@@ -132,7 +140,45 @@ export class ListWorkflowComponent implements OnInit, OnDestroy {
 
   updateWorkflowStatus(workflow: Workflow, newStatus: WorkflowStatus) {
     if (!workflow || !workflow.id) return;
-    this.workflowService.changeStatus(workflow.id, newStatus)
+    
+    // Extract requestId from workflow details if this is a request approval workflow
+    let requestId = null;
+    if (this.isRequestApprovalType(workflow.type) && workflow.details) {
+      // Extract requestId from workflow details
+      let details: any = workflow.details;
+      
+      if (typeof details === 'string') {
+        try {
+          // Try to parse JSON first
+          details = JSON.parse(details);
+        } catch (e) {
+          // If parsing fails, try regex extraction methods
+          const detailsText = details;
+          const boldMatch = detailsText.match(/<b>requestId:<\/b>\s*(\d+)/i);
+          if (boldMatch && boldMatch[1]) {
+            requestId = boldMatch[1];
+          } else {
+            const plainMatch = detailsText.match(/requestId:\s*(\d+)/i);
+            if (plainMatch && plainMatch[1]) {
+              requestId = plainMatch[1];
+            } else {
+              const hashMatch = detailsText.match(/request\s+#(\d+)/i);
+              if (hashMatch && hashMatch[1]) {
+                requestId = hashMatch[1];
+              }
+            }
+          }
+        }
+      }
+      
+      // If we have parsed JSON details, extract requestId
+      if (details && details.requestId) {
+        requestId = details.requestId;
+      }
+    }
+    
+    // Use the updateWorkflowAndRequestStatus method to update both entities
+    this.workflowService.updateWorkflowAndRequestStatus(workflow.id, newStatus, requestId)
       .pipe(first())
       .subscribe({
         next: (updatedWorkflow) => {
@@ -204,11 +250,72 @@ export class ListWorkflowComponent implements OnInit, OnDestroy {
   }
 
   getDetailsAsObject(details: any): { key: string, value: any }[] {
-    return Object.entries(details || {}).map(([key, value]) => ({ key, value }));
+    // If workflow is an onboarding with a simple task description
+    if (typeof details === 'string') {
+      // Handle department transfer text directly
+      if (details.includes('Employee transferred from')) {
+        return [{ key: '', value: details }];
+      }
+      
+      // Handle task description
+      if (details.startsWith('Task:')) {
+        return [{ key: 'Task', value: details }];
+      }
+      
+      try {
+        details = JSON.parse(details);
+      } catch (e) {
+        // If parsing fails, just return the string as is
+        return [{ key: '', value: details }];
+      }
+    }
+    
+    // For Request Approval workflows, format in the standard way
+    if (details && details.requestId && details.requestType && details.requesterId && details.message) {
+      return [
+        { key: 'requestId', value: details.requestId },
+        { key: 'requestType', value: details.requestType },
+        { key: 'requesterId', value: details.requesterId },
+        { key: 'message', value: details.message }
+      ];
+    }
+    
+    // For task-based workflows, show only the task if not a Request Approval workflow
+    if (details && details.task) {
+      return [{ key: 'Task', value: details.task }];
+    }
+    
+    // Return the details as key-value pairs for other cases
+    return Object.entries(details || {})
+      .map(([key, value]) => ({ 
+        key, 
+        value: typeof value === 'object' ? JSON.stringify(value) : value 
+      }));
   }
 
   isPendingOrReviewing(status: string): boolean {
     return status === WorkflowStatus.Pending || status === WorkflowStatus.ForReviewing;
+  }
+
+  // Check if workflow details only contain a task field
+  isTaskOnlyWorkflow(details: any): boolean {
+    if (typeof details === 'string') {
+      try {
+        details = JSON.parse(details);
+      } catch (e) {
+        // If can't parse as JSON, it's likely just a string task
+        return true;
+      }
+    }
+    
+    // If it has only a task property and no others, it's a task-only workflow
+    return details && 
+           details.task && 
+           Object.keys(details).length === 1 && 
+           !details.requestId && 
+           !details.requestType && 
+           !details.requesterId && 
+           !details.message;
   }
 
   isCompletedOrApproved(status: string): boolean {
@@ -235,5 +342,10 @@ export class ListWorkflowComponent implements OnInit, OnDestroy {
       return error.error?.message || error.message || defaultMessage;
     }
     return error.message || defaultMessage;
+  }
+
+  // Helper method to check if workflow is a request approval type
+  isRequestApprovalType(type: string | WorkflowType): boolean {
+    return type === WorkflowType.RequestApproval || type === 'Request Approval';
   }
 } 

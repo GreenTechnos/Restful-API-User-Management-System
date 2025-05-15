@@ -1,12 +1,13 @@
 import { NgModule } from '@angular/core';
-import { ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 
 import { LayoutComponent } from './layout.component';
 import { ListComponent } from './list.component';
 import { AddEditEmployeeComponent } from './add-edit.component';
 import { TransferComponent } from './transfer.component';
+import { TransferModalComponent } from './transfer-modal.component';
 
 const routes = [
     {
@@ -14,8 +15,7 @@ const routes = [
         children: [
             { path: '', component: ListComponent },
             { path: 'add', component: AddEditEmployeeComponent },
-            { path: 'edit/:id', component: AddEditEmployeeComponent },
-            { path: 'transfer/:id', component: TransferComponent }
+            { path: 'edit/:id', component: AddEditEmployeeComponent }
         ]
     }
 ];
@@ -23,15 +23,16 @@ const routes = [
 @NgModule({
     imports: [
         CommonModule,
-        ReactiveFormsModule,
         FormsModule,
+        ReactiveFormsModule,
         RouterModule.forChild(routes)
     ],
     declarations: [
-        TransferComponent,
         LayoutComponent,
         ListComponent,
-        AddEditEmployeeComponent
+        AddEditEmployeeComponent,
+        TransferComponent,
+        TransferModalComponent
     ]
 })
 export class EmployeesModule { } 

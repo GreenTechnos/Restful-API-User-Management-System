@@ -21,7 +21,7 @@ export enum WorkflowType {
     EquipmentRequest = 'Equipment Request',
     DepartmentChange = 'Department Change',
     Other = 'Other',
-    RequestApproval = "RequestApproval"
+    RequestApproval = "Request Approval"
 }
 
 export enum WorkflowStatus {
