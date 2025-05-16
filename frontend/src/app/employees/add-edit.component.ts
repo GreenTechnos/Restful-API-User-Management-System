@@ -105,6 +105,11 @@ export class AddEditEmployeeComponent implements OnInit {
             .pipe(first())
             .subscribe({
                 next: (employee) => {
+                    // Format hire date to YYYY-MM-DD for the date input
+                    if (employee.hireDate) {
+                        const date = new Date(employee.hireDate);
+                        employee.hireDate = date.toISOString().split('T')[0];
+                    }
                     this.form.patchValue(employee);
                     this.loading = false;
                 },
@@ -137,7 +142,14 @@ export class AddEditEmployeeComponent implements OnInit {
     }
 
     private createEmployee() {
-        this.accountService.createEmployee(this.form.value)
+        const formData = {...this.form.value};
+        
+        // Ensure hireDate is a proper Date object
+        if (formData.hireDate) {
+            formData.hireDate = new Date(formData.hireDate);
+        }
+        
+        this.accountService.createEmployee(formData)
             .pipe(first())
             .subscribe({
                 next: () => {
@@ -152,7 +164,14 @@ export class AddEditEmployeeComponent implements OnInit {
     }
 
     private updateEmployee() {
-        this.accountService.updateEmployee(this.id, this.form.value)
+        const formData = {...this.form.value};
+        
+        // Ensure hireDate is a proper Date object
+        if (formData.hireDate) {
+            formData.hireDate = new Date(formData.hireDate);
+        }
+        
+        this.accountService.updateEmployee(this.id, formData)
             .pipe(first())
             .subscribe({
                 next: () => {

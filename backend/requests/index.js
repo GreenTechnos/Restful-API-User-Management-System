@@ -287,6 +287,7 @@ async function update(req, res, next) {
     // Check if status is changing
     const statusChanged = req.body.status && req.body.status !== request.status;
     const oldStatus = request.status;
+    const itemsUpdated = !!(req.body.items || req.body.requestItems);
     
     // Update the request
     await request.update({
@@ -294,24 +295,8 @@ async function update(req, res, next) {
       status: req.body.status
     });
     
-    // If status changed, create a workflow entry for status change
-    if (statusChanged) {
-      await db.Workflow.create({
-        employeeId: request.employeeId,
-        type: 'Request Approval',
-        status: req.body.status === 'Approved' ? 'Approved' : 
-               req.body.status === 'Rejected' ? 'Rejected' : 'Pending',
-        details: JSON.stringify({
-          requestId: request.id,
-          requestType: request.type,
-          requesterId: request.employeeId,
-          message: `${request.type} request #${request.id} status changed from ${oldStatus} to ${req.body.status}.`
-        })
-      });
-    }
-    
-    // If items were provided, update them and create a workflow entry for edit
-    if (req.body.items || req.body.requestItems) {
+    // If items were provided, update them
+    if (itemsUpdated) {
       // Delete existing items
       await db.RequestItem.destroy({ where: { requestId: request.id } });
       
@@ -324,12 +309,16 @@ async function update(req, res, next) {
           requestId: request.id
         })));
       }
-      
+    }
+    
+    // Only create a workflow if something significant changed (status or items)
+    if (statusChanged || itemsUpdated) {
       // Find employee to get employeeId for the message
       const employee = await db.Employee.findByPk(request.employeeId);
       const employeeIdDisplay = employee ? employee.employeeId : request.employeeId;
       
-      // Create a workflow entry for request edit (even if status also changed)
+      // Create only one workflow entry regardless of whether status or items changed
+      // Always use the "Review updated" message
       await db.Workflow.create({
         employeeId: request.employeeId,
         type: 'Request Approval',
