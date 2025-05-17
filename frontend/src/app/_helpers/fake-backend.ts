@@ -72,6 +72,8 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                     return resetPassword();
                 case path.endsWith('/accounts') && method === 'GET':
                     return getAccounts();
+                case path.endsWith('/accounts/active') && method === 'GET':
+                    return getActiveAccounts();
                 case path.match(/\/accounts\/\d+$/) && method === 'GET':
                     return getAccountById();
                 case path.endsWith('/accounts') && method === 'POST':
@@ -337,6 +339,14 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             return ok(accounts.map(x => basicDetails(x)));
         }
 
+        // New function to get only active accounts for employee creation
+        function getActiveAccounts() {
+            if (!isAuthenticated()) return unauthorized();
+            return ok(accounts
+                .filter(x => x.status === 'Active')
+                .map(x => basicDetails(x)));
+        }
+
         function getAccountById() {
             if (!isAuthenticated()) return unauthorized();
 
@@ -377,6 +387,11 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             let params = body;
             let account = accounts.find(x => x.id == idFromUrl());
 
+            // Check if account exists
+            if (!account) {
+                return error('Account not found');
+            }
+
             // user accounts can update own profile and admin accounts can update all profiles
             if (account.id != currentAccount().id && !isAuthorized(Role.Admin)) {
                 return unauthorized();
@@ -391,7 +406,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             Object.assign(account, params);
             localStorage.setItem(accountsKey, JSON.stringify(accounts));
 
-            return ok();
+            return ok(basicDetails(account));
         }
 
         // Employee route functions

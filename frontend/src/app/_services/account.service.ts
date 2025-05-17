@@ -128,9 +128,9 @@ export class AccountService {
     private employeesUrl = `${environment.apiUrl}/employees`;
 
     getAllUsers(): Observable<any[]> {
-        return this.http.get<any[]>(`${baseUrl}`).pipe(
+        return this.http.get<any[]>(`${baseUrl}/active`).pipe(
             map(accounts => {
-                console.log('Fetched accounts:', accounts);
+                console.log('Fetched active accounts:', accounts);
                 return accounts.map(account => ({
                     id: account.id,
                     email: account.email,

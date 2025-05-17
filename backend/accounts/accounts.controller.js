@@ -16,6 +16,7 @@ router.post('/forgot-password', forgotPasswordSchema, forgotPassword);
 router.post('/validate-reset-token', validateResetTokenSchema, validateResetToken);
 router.post('/reset-password', resetPasswordSchema, resetPassword);
 router.get('/', authorize(Role.Admin), getAll);
+router.get('/active', getActive);
 router.get('/:id', authorize(), getById);
 router.post('/', authorize(Role.Admin), createSchema, create);
 router.put('/:id', authorize(), updateSchema, update);
@@ -37,11 +38,7 @@ function authenticate(req, res, next) {
     accountService.authenticate({ email, password, ipAddress })
         .then(({ refreshToken, ...account }) => {
             setTokenCookie(res, refreshToken);
-            // Include refreshToken in response for cross-domain environments
-            res.json({
-                ...account,
-                refreshToken  // Include refreshToken in the response body
-            });
+            res.json(account);
         })
         .catch(error => {
             if (error === 'Email does not exist') {
@@ -62,22 +59,12 @@ function authenticate(req, res, next) {
 }
 
 function refreshToken(req, res, next) {
-    // Accept token from request body or cookie
-    const token = req.body.token || req.cookies.refreshToken;
+    const token = req.cookies.refreshToken;
     const ipAddress = req.ip;
-    
-    if (!token) {
-        return res.status(400).json({ message: 'Refresh token is required' });
-    }
-    
     accountService.refreshToken({ token, ipAddress })
         .then(({ refreshToken, ...account }) => {
             setTokenCookie(res, refreshToken);
-            // Include refreshToken in response for cross-domain environments
-            res.json({
-                ...account,
-                refreshToken  // Include refreshToken in the response body
-            });
+            res.json(account);
         })
         .catch(next);
 }
@@ -185,6 +172,12 @@ function getAll(req, res, next) {
         .catch(next);
 }
 
+function getActive(req, res, next) {
+    accountService.getActive()
+        .then(accounts => res.json(accounts))
+        .catch(next);
+}
+
 function getById(req, res, next) {
     // users can get their own account and admins can get any account
     if (Number(req.params.id) !== req.user.id && req.user.role !== Role.Admin) {
@@ -263,10 +256,7 @@ function setTokenCookie(res, token) {
     // create cookie with refresh token that expires in 7 days
     const cookieOptions = {
         httpOnly: true,
-        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        sameSite: 'none',
-        secure: true,
-        path: '/'
+        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
     };
     res.cookie('refreshToken', token, cookieOptions);
 }

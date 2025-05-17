@@ -20,7 +20,8 @@ module.exports = {
     getById,
     create,
     update,
-    delete: _delete
+    delete: _delete,
+    getActive
 };
 
 async function authenticate({ email, password, ipAddress }) {
@@ -166,6 +167,15 @@ async function resetPassword({ token, password }) {
 
 async function getAll() {
     const accounts = await db.Account.findAll();
+    return accounts.map(x => basicDetails(x));
+}
+
+async function getActive() {
+    const accounts = await db.Account.findAll({
+        where: {
+            status: 'Active'
+        }
+    });
     return accounts.map(x => basicDetails(x));
 }
 
