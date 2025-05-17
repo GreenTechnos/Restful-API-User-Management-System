@@ -47,11 +47,16 @@ export class AccountService {
     }
 
     refreshToken() {
-        console.log('Current refresh token value:', this.refreshTokenValue);
+        // Don't attempt to refresh if there's no token
+        if (!this.refreshTokenValue) {
+            return new Observable(subscriber => {
+                subscriber.complete();
+            });
+        }
+
         return this.http.post<any>(`${baseUrl}/refresh-token`, { token: this.refreshTokenValue }, { withCredentials: true })
             .pipe(
                 map((account) => {
-                    console.log('Refresh token response:', account);
                     this.accountSubject.next(account);
                     if (account.refreshToken) {
                         this.refreshTokenValue = account.refreshToken;
