@@ -18,8 +18,18 @@ export class AccountService {
         private router: Router,
         private http: HttpClient
     ) {
-        this.accountSubject = new BehaviorSubject<Account>(null);
+        // Initialize account from localStorage if available
+        const storedAccount = localStorage.getItem('account');
+        this.accountSubject = new BehaviorSubject<Account>(storedAccount ? JSON.parse(storedAccount) : null);
         this.account = this.accountSubject.asObservable();
+        
+        // Initialize refresh token from cookie if available
+        this.refreshTokenValue = this.getRefreshToken();
+        
+        // Start refresh token timer if we have an account
+        if (this.accountValue) {
+            this.startRefreshTokenTimer();
+        }
     }
 
     public get accountValue(): Account {
@@ -32,6 +42,8 @@ export class AccountService {
             .pipe(
                 map(account => {
                     console.log('Login successful:', account);
+                    // Store account in localStorage
+                    localStorage.setItem('account', JSON.stringify(account));
                     this.accountSubject.next(account);
                     if (account.refreshToken) {
                         this.refreshTokenValue = account.refreshToken;
@@ -46,6 +58,8 @@ export class AccountService {
         this.http.post<any>(`${baseUrl}/revoke-token`, { token: this.refreshTokenValue }, { withCredentials: true }).subscribe();
         this.stopRefreshTokenTimer();
         this.refreshTokenValue = null;
+        // Remove account from localStorage
+        localStorage.removeItem('account');
         this.accountSubject.next(null);
         this.router.navigate(['/account/login']);
     }
@@ -60,6 +74,8 @@ export class AccountService {
         return this.http.post<any>(`${baseUrl}/refresh-token`, { token: this.refreshTokenValue }, { withCredentials: true })
             .pipe(
                 map((account) => {
+                    // Update account in localStorage
+                    localStorage.setItem('account', JSON.stringify(account));
                     this.accountSubject.next(account);
                     if (account.refreshToken) {
                         this.refreshTokenValue = account.refreshToken;
@@ -242,6 +258,11 @@ export class AccountService {
 
     getNextEmployeeId(): Observable<{ employeeId: string }> {
         return this.http.get<{ employeeId: string }>(`${this.employeesUrl}/nextId`);
+    }
+
+    private getRefreshToken(): string | null {
+        // get refresh token from cookie
+        return (document.cookie.split(';').find(x => x.includes('fakeRefreshToken')) || '=').split('=')[1];
     }
 
 }
