@@ -27,15 +27,19 @@ export class AccountService {
     }
 
     login(email: string, password: string) {
+        console.log('Attempting login with:', { email });
         return this.http.post<any>(`${baseUrl}/authenticate`, { email, password }, { withCredentials: true })
-            .pipe(map(account => {
-                this.accountSubject.next(account);
-                if (account.refreshToken) {
-                    this.refreshTokenValue = account.refreshToken;
-                }
-                this.startRefreshTokenTimer();
-                return account;
-            }));
+            .pipe(
+                map(account => {
+                    console.log('Login successful:', account);
+                    this.accountSubject.next(account);
+                    if (account.refreshToken) {
+                        this.refreshTokenValue = account.refreshToken;
+                    }
+                    this.startRefreshTokenTimer();
+                    return account;
+                })
+            );
     }
 
     logout() {
