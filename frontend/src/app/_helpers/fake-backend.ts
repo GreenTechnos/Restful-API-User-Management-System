@@ -28,8 +28,8 @@ let workflows = [
 
 let requests = [
     { id: 1, employeeId: 1, type: 'Equipment', requestItems: [{ name: 'Laptop', quantity: 1 }, { name: 'Monitor', quantity: 2 }], status: 'Pending' },
-    { id: 2, employeeId: 1, type: 'Software', requestItems: [{ name: 'Visual Studio', quantity: 1 }, { name: 'Office 365', quantity: 1 }], status: 'Approved' },
-    { id: 3, employeeId: 2, type: 'Training', requestItems: [{ name: 'Adobe Illustrator Course', quantity: 1 }], status: 'Rejected' },
+    { id: 2, employeeId: 1, type: 'Resources', requestItems: [{ name: 'Visual Studio', quantity: 1 }, { name: 'Office 365', quantity: 1 }], status: 'Approved' },
+    { id: 3, employeeId: 2, type: 'Resources', requestItems: [{ name: 'Adobe Illustrator Course', quantity: 1 }], status: 'Rejected' },
     { id: 4, employeeId: 2, type: 'Equipment', requestItems: [{ name: 'Drawing Tablet', quantity: 1 }], status: 'Pending' }
 ];
 
@@ -1093,7 +1093,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             (requests[reqIndex] as any) = { 
                 id,
                 employeeId,
-                type: 'Request Approval', // Always keep type as Request Approval
+                type: body.type || requests[reqIndex].type, // Preserve the original type or use the new one
                 status: body.status === 'Completed' ? 'Pending' : (body.status || requests[reqIndex].status), // Prevent Completed status
                 items: [...requestItems],     // For backwards compatibility
                 requestItems: [...requestItems]  // For newer frontend implementations
@@ -1107,14 +1107,15 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             
             // Create workflow entry if status changed or items changed
             if ((body.status && body.status !== oldStatus) || body.items || body.requestItems) {
-                const workflowMessage = `Review updated Equipment request #${id} from Employee ID ${employee.employeeId}.`;
+                const requestType = body.type || requests[reqIndex].type;
+                const workflowMessage = `Review updated ${requestType} request #${id} from Employee ID ${employee.employeeId}.`;
                 workflows.push({
                     id: workflows.length + 1,
                     employeeId: employeeId,
                     type: 'Request Approval',
                     details: JSON.stringify({
                         requestId: id,
-                        requestType: 'Request Approval',
+                        requestType: requestType,
                         requesterId: employeeId,
                         message: workflowMessage
                     }),
