@@ -18,7 +18,12 @@ export class ErrorInterceptor implements HttpInterceptor {
                 }
 
                 const error = (err && err.error && err.error.message) || err.statusText;
-                console.error(err);
+                
+                // Only log errors that aren't refresh token errors
+                if (!request.url.includes('/refresh-token')) {
+                    console.error(err);
+                }
+                
                 return throwError(error);
             })
         );
