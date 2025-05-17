@@ -51,18 +51,14 @@ export class LoginComponent implements OnInit {
 
         this.loading = true;
         this.accountService.login(this.f.email.value, this.f.password.value)
-            .pipe(first())
             .subscribe({
-                next: () => {
-                    // Successful login - navigate to returnUrl or home
-                    this.router.navigateByUrl(this.returnUrl)
-                        .then(() => {
-                            // Optional: Force reload if needed
-                            window.location.reload();
-                        });
+                next: (response) => {
+                    console.log('Login response:', response);
+                    this.router.navigateByUrl(this.returnUrl);
                 },
                 error: error => {
-                    this.alertService.error(error);
+                    console.error('Login error:', error);
+                    this.alertService.error(error.error?.message || 'Login failed');
                     this.loading = false;
                 }
             });

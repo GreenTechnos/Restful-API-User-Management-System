@@ -12,6 +12,7 @@ const baseUrl = `${environment.apiUrl}/accounts`;
 export class AccountService {
     private accountSubject: BehaviorSubject<Account>;
     public account: Observable<Account>;
+    private refreshTokenValue: string | null = null;
 
     constructor(
         private router: Router,
@@ -26,28 +27,47 @@ export class AccountService {
     }
 
     login(email: string, password: string) {
+        console.log('Attempting login with:', { email });
         return this.http.post<any>(`${baseUrl}/authenticate`, { email, password }, { withCredentials: true })
-            .pipe(map(account => {
-                this.accountSubject.next(account);
-                this.startRefreshTokenTimer();
-                return account;
-            }));
+            .pipe(
+                map(account => {
+                    console.log('Login successful:', account);
+                    this.accountSubject.next(account);
+                    if (account.refreshToken) {
+                        this.refreshTokenValue = account.refreshToken;
+                    }
+                    this.startRefreshTokenTimer();
+                    return account;
+                })
+            );
     }
 
     logout() {
-        this.http.post<any>(`${baseUrl}/revoke-token`, {}, { withCredentials: true }).subscribe();
+        this.http.post<any>(`${baseUrl}/revoke-token`, { token: this.refreshTokenValue }, { withCredentials: true }).subscribe();
         this.stopRefreshTokenTimer();
+        this.refreshTokenValue = null;
         this.accountSubject.next(null);
         this.router.navigate(['/account/login']);
     }
 
     refreshToken() {
-        return this.http.post<any>(`${baseUrl}/refresh-token`, {}, { withCredentials: true })
-            .pipe(map((account) => {
-                this.accountSubject.next(account);
-                this.startRefreshTokenTimer();
-                return account;
-            }));
+        if (!this.refreshTokenValue) {
+            return new Observable(subscriber => {
+                subscriber.complete();
+            });
+        }
+
+        return this.http.post<any>(`${baseUrl}/refresh-token`, { token: this.refreshTokenValue }, { withCredentials: true })
+            .pipe(
+                map((account) => {
+                    this.accountSubject.next(account);
+                    if (account.refreshToken) {
+                        this.refreshTokenValue = account.refreshToken;
+                    }
+                    this.startRefreshTokenTimer();
+                    return account;
+                })
+            );
     }
 
     register(account: Account) {
@@ -108,9 +128,9 @@ export class AccountService {
     private employeesUrl = `${environment.apiUrl}/employees`;
 
     getAllUsers(): Observable<any[]> {
-        return this.http.get<any[]>(`${baseUrl}`).pipe(
+        return this.http.get<any[]>(`${baseUrl}/active`).pipe(
             map(accounts => {
-                console.log('Fetched accounts:', accounts);
+                console.log('Fetched active accounts:', accounts);
                 return accounts.map(account => ({
                     id: account.id,
                     email: account.email,

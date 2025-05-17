@@ -16,6 +16,7 @@ router.post('/forgot-password', forgotPasswordSchema, forgotPassword);
 router.post('/validate-reset-token', validateResetTokenSchema, validateResetToken);
 router.post('/reset-password', resetPasswordSchema, resetPassword);
 router.get('/', authorize(Role.Admin), getAll);
+router.get('/active', getActive);
 router.get('/:id', authorize(), getById);
 router.post('/', authorize(Role.Admin), createSchema, create);
 router.put('/:id', authorize(), updateSchema, update);
@@ -167,6 +168,12 @@ function resetPassword(req, res, next) {
 
 function getAll(req, res, next) {
     accountService.getAll()
+        .then(accounts => res.json(accounts))
+        .catch(next);
+}
+
+function getActive(req, res, next) {
+    accountService.getActive()
         .then(accounts => res.json(accounts))
         .catch(next);
 }
