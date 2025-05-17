@@ -47,16 +47,19 @@ export class AccountService {
     }
 
     refreshToken() {
-        // Send the token in the request body since cookies may not work across domains
+        console.log('Current refresh token value:', this.refreshTokenValue);
         return this.http.post<any>(`${baseUrl}/refresh-token`, { token: this.refreshTokenValue }, { withCredentials: true })
-            .pipe(map((account) => {
-                this.accountSubject.next(account);
-                if (account.refreshToken) {
-                    this.refreshTokenValue = account.refreshToken;
-                }
-                this.startRefreshTokenTimer();
-                return account;
-            }));
+            .pipe(
+                map((account) => {
+                    console.log('Refresh token response:', account);
+                    this.accountSubject.next(account);
+                    if (account.refreshToken) {
+                        this.refreshTokenValue = account.refreshToken;
+                    }
+                    this.startRefreshTokenTimer();
+                    return account;
+                })
+            );
     }
 
     register(account: Account) {
