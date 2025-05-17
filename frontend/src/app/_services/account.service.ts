@@ -51,7 +51,6 @@ export class AccountService {
     }
 
     refreshToken() {
-        // Don't attempt to refresh if there's no token
         if (!this.refreshTokenValue) {
             return new Observable(subscriber => {
                 subscriber.complete();

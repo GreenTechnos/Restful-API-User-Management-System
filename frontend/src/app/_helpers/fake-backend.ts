@@ -753,6 +753,37 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                 }
             }
             
+            // Create workflow entry if status changed
+            if (body.status && body.status !== oldStatus) {
+                workflows.push({
+                    id: workflows.length + 1,
+                    employeeId: id,
+                    type: 'Request Approval',
+                    details: JSON.stringify({
+                        requestId: id,
+                        requestType: 'Request Approval',
+                        requesterId: id,
+                        message: `Request #${id} from Employee ID ${id} was ${body.status.toLowerCase()}.`
+                    }),
+                    status: 'Pending'
+                });
+            } 
+            // Create workflow for request edits if items changed
+            else if (body.items || body.requestItems) {
+                workflows.push({
+                    id: workflows.length + 1,
+                    employeeId: id,
+                    type: 'Request Approval',
+                    details: JSON.stringify({
+                        requestId: id,
+                        requestType: 'Request Approval',
+                        requesterId: id,
+                        message: `Review updated Equipment request #${id} from Employee ID ${id}.`
+                    }),
+                    status: 'Pending'
+                });
+            }
+            
             return ok(workflows[workflowIndex]);
         }
 
@@ -1047,8 +1078,8 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             (requests[reqIndex] as any) = { 
                 id,
                 employeeId,
-                type: body.type || requests[reqIndex].type,
-                status: body.status || requests[reqIndex].status,
+                type: 'Request Approval', // Always keep type as Request Approval
+                status: body.status === 'Completed' ? 'Pending' : (body.status || requests[reqIndex].status), // Prevent Completed status
                 items: [...requestItems],     // For backwards compatibility
                 requestItems: [...requestItems]  // For newer frontend implementations
             };
@@ -1059,32 +1090,18 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             const employee = employees.find(e => e.id === employeeId);
             if (!employee) return error('Employee not found');
             
-            // Create workflow entry if status changed
-            if (body.status && body.status !== oldStatus) {
-                workflows.push({
-                    id: workflows.length + 1,
-                    employeeId: employeeId,
-                    type: 'Request Status Updated',
-                    details: JSON.stringify({
-                        requestId: id,
-                        requestType: requests[reqIndex].type,
-                        requesterId: employeeId,
-                        message: `${requests[reqIndex].type} request #${id} from Employee ID ${employee.employeeId} was ${body.status.toLowerCase()}.`
-                    }),
-                    status: 'Completed'
-                });
-            } 
-            // Create workflow for request edits if items changed
-            else if (body.items || body.requestItems) {
+            // Create workflow entry if status changed or items changed
+            if ((body.status && body.status !== oldStatus) || body.items || body.requestItems) {
+                const workflowMessage = `Review updated Equipment request #${id} from Employee ID ${employee.employeeId}.`;
                 workflows.push({
                     id: workflows.length + 1,
                     employeeId: employeeId,
                     type: 'Request Approval',
                     details: JSON.stringify({
                         requestId: id,
-                        requestType: requests[reqIndex].type,
+                        requestType: 'Request Approval',
                         requesterId: employeeId,
-                        message: `Review updated ${requests[reqIndex].type} request #${id} from Employee ID ${employee.employeeId}.`
+                        message: workflowMessage
                     }),
                     status: 'Pending'
                 });
