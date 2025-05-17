@@ -12,6 +12,7 @@ const baseUrl = `${environment.apiUrl}/accounts`;
 export class AccountService {
     private accountSubject: BehaviorSubject<Account>;
     public account: Observable<Account>;
+    private refreshTokenValue: string | null = null;
 
     constructor(
         private router: Router,
@@ -29,22 +30,30 @@ export class AccountService {
         return this.http.post<any>(`${baseUrl}/authenticate`, { email, password }, { withCredentials: true })
             .pipe(map(account => {
                 this.accountSubject.next(account);
+                if (account.refreshToken) {
+                    this.refreshTokenValue = account.refreshToken;
+                }
                 this.startRefreshTokenTimer();
                 return account;
             }));
     }
 
     logout() {
-        this.http.post<any>(`${baseUrl}/revoke-token`, {}, { withCredentials: true }).subscribe();
+        this.http.post<any>(`${baseUrl}/revoke-token`, { token: this.refreshTokenValue }, { withCredentials: true }).subscribe();
         this.stopRefreshTokenTimer();
+        this.refreshTokenValue = null;
         this.accountSubject.next(null);
         this.router.navigate(['/account/login']);
     }
 
     refreshToken() {
-        return this.http.post<any>(`${baseUrl}/refresh-token`, {}, { withCredentials: true })
+        // Send the token in the request body since cookies may not work across domains
+        return this.http.post<any>(`${baseUrl}/refresh-token`, { token: this.refreshTokenValue }, { withCredentials: true })
             .pipe(map((account) => {
                 this.accountSubject.next(account);
+                if (account.refreshToken) {
+                    this.refreshTokenValue = account.refreshToken;
+                }
                 this.startRefreshTokenTimer();
                 return account;
             }));

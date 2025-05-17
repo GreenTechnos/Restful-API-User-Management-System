@@ -37,7 +37,11 @@ function authenticate(req, res, next) {
     accountService.authenticate({ email, password, ipAddress })
         .then(({ refreshToken, ...account }) => {
             setTokenCookie(res, refreshToken);
-            res.json(account);
+            // Include refreshToken in response for cross-domain environments
+            res.json({
+                ...account,
+                refreshToken  // Include refreshToken in the response body
+            });
         })
         .catch(error => {
             if (error === 'Email does not exist') {
@@ -58,12 +62,22 @@ function authenticate(req, res, next) {
 }
 
 function refreshToken(req, res, next) {
-    const token = req.cookies.refreshToken;
+    // Accept token from request body or cookie
+    const token = req.body.token || req.cookies.refreshToken;
     const ipAddress = req.ip;
+    
+    if (!token) {
+        return res.status(400).json({ message: 'Refresh token is required' });
+    }
+    
     accountService.refreshToken({ token, ipAddress })
         .then(({ refreshToken, ...account }) => {
             setTokenCookie(res, refreshToken);
-            res.json(account);
+            // Include refreshToken in response for cross-domain environments
+            res.json({
+                ...account,
+                refreshToken  // Include refreshToken in the response body
+            });
         })
         .catch(next);
 }
@@ -249,7 +263,10 @@ function setTokenCookie(res, token) {
     // create cookie with refresh token that expires in 7 days
     const cookieOptions = {
         httpOnly: true,
-        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        sameSite: 'none',
+        secure: true,
+        path: '/'
     };
     res.cookie('refreshToken', token, cookieOptions);
 }
