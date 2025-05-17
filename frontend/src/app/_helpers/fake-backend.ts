@@ -724,103 +724,32 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                 
                 if (requestIndex !== -1) {
                     // Update request status based on workflow status
-                    if (body.status === 'Approved') {
-                        requests[requestIndex].status = 'Approved';
-                        console.log('Updated request status to Approved');
-                    } else if (body.status === 'Rejected') {
-                        requests[requestIndex].status = 'Rejected';
-                        console.log('Updated request status to Rejected');
-                    } else if (body.status === 'Pending') {
-                        requests[requestIndex].status = 'Pending';
-                        console.log('Updated request status to Pending');
-                    }
+                    requests[requestIndex].status = body.status;
+                    console.log(`Updated request ${providedRequestId} status to ${body.status}`);
                 } else {
                     console.log('Request not found with ID:', providedRequestId);
                 }
-            }
-            // Otherwise, try to extract requestId from workflow details (for backward compatibility)
-            else if ((workflows[workflowIndex].type === 'Request Approval' || 
-                 workflows[workflowIndex].type === 'RequestApproval' ||
-                 workflows[workflowIndex].type.includes('Request')) && 
-                body.status && 
-                body.status !== oldStatus) {
-                
-                // Try to extract requestId from details field
-                const detailsText = workflows[workflowIndex].details || '';
-                console.log('Workflow details text:', detailsText);
-                
-                // Extract requestId - first try to parse as JSON
-                let requestId = null;
-                try {
-                    // Try to parse details as JSON
-                    if (typeof detailsText === 'string') {
-                        if (detailsText.trim().startsWith('{')) {
-                            const detailsObj = JSON.parse(detailsText);
-                            if (detailsObj.requestId) {
-                                requestId = parseInt(detailsObj.requestId.toString());
-                                console.log('Extracted requestId from JSON:', requestId);
+            } else {
+                // Try to extract requestId from workflow details if it's a request approval workflow
+                if (oldWorkflow.type === 'Request Approval' || oldWorkflow.type === 'RequestApproval') {
+                    try {
+                        const details = JSON.parse(oldWorkflow.details);
+                        const requestId = details.requestId;
+                        
+                        if (requestId) {
+                            const requestIndex = requests.findIndex(r => r.id === requestId);
+                            
+                            if (requestIndex !== -1) {
+                                // Update request status based on workflow status
+                                requests[requestIndex].status = body.status;
+                                console.log(`Updated request ${requestId} status to ${body.status}`);
+                            } else {
+                                console.log('Request not found with ID:', requestId);
                             }
                         }
-                    } else if (typeof detailsText === 'object') {
-                        // It's already an object
-                        const detailsObj = detailsText as any;
-                        if (detailsObj && detailsObj.requestId) {
-                            requestId = parseInt(detailsObj.requestId.toString());
-                            console.log('Extracted requestId from object:', requestId);
-                        }
+                    } catch (e) {
+                        console.log('Error parsing workflow details:', e);
                     }
-                } catch (e) {
-                    console.log('Failed to parse details as JSON:', e);
-                }
-                
-                // If JSON parsing failed, try regex patterns
-                if (!requestId && typeof detailsText === 'string') {
-                    // Try matching standard format with HTML bold tags
-                    const boldMatch = detailsText.match(/<b>requestId:<\/b>\s*(\d+)/i);
-                    if (boldMatch && boldMatch[1]) {
-                        requestId = parseInt(boldMatch[1]);
-                    }
-                    
-                    // Try matching without HTML tags
-                    if (!requestId) {
-                        const plainMatch = detailsText.match(/requestId:\s*(\d+)/i);
-                        if (plainMatch && plainMatch[1]) {
-                            requestId = parseInt(plainMatch[1]);
-                        }
-                    }
-                    
-                    // Try extracting from any #NUMBER pattern if nothing else worked
-                    if (!requestId) {
-                        const hashMatch = detailsText.match(/request\s+#(\d+)/i);
-                        if (hashMatch && hashMatch[1]) {
-                            requestId = parseInt(hashMatch[1]);
-                        }
-                    }
-                }
-                
-                console.log('Final extracted requestId:', requestId);
-                
-                if (requestId) {
-                    const requestIndex = requests.findIndex(r => r.id === requestId);
-                    
-                    if (requestIndex !== -1) {
-                        console.log('Found request at index:', requestIndex);
-                        // Update request status based on workflow status
-                        if (body.status === 'Approved') {
-                            requests[requestIndex].status = 'Approved';
-                            console.log('Updated request status to Approved');
-                        } else if (body.status === 'Rejected') {
-                            requests[requestIndex].status = 'Rejected';
-                            console.log('Updated request status to Rejected');
-                        } else if (body.status === 'Pending') {
-                            requests[requestIndex].status = 'Pending';
-                            console.log('Updated request status to Pending');
-                        }
-                    } else {
-                        console.log('Request not found with ID:', requestId);
-                    }
-                } else {
-                    console.log('Could not extract requestId from details:', detailsText);
                 }
             }
             
