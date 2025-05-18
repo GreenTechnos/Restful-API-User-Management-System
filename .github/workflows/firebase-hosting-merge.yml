@@ -5,16 +5,15 @@ name: Deploy to Firebase Hosting on merge
 on:
   push:
     branches:
-      - backend-postrero
+      - frontend-gorgonio
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm --prefix frontend ci && npm --prefix frontend run build
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FINAL_PROJECT_E797F }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_GORGONIO_FULLSTACK_APP_FD723 }}
           channelId: live
           projectId: gorgonio-fullstack-app-fd723
