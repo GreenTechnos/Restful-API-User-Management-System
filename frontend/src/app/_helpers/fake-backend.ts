@@ -165,7 +165,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
             }
         
             if (account.status !== 'Active') {
-                return error('Account is inactive. Please contact support.');
+                return error('Account is inactive. Please contact system administrator.');
             }
         
             account.refreshTokens.push(generateRefreshToken());
@@ -232,35 +232,59 @@ export class FakeBackendInterceptor implements HttpInterceptor {
 
             // assign account id and a few other properties then save
             account.id = newAccountId();
+            
             if (account.id === 1) {
-                // first registered account is an admin
+                // First registered account is an admin and active
                 account.role = Role.Admin;
                 account.status = 'Active'; // Admin accounts get active status
+                account.isVerified = true; // First account is automatically verified
+                
+                // Save account without verification token
+                account.refreshTokens = [];
+                delete account.confirmPassword;
+                accounts.push(account);
+                localStorage.setItem(accountsKey, JSON.stringify(accounts));
+                
+                // Slight delay for the info message so the success message appears first
+                setTimeout(() => {
+                    alertService.info(`
+                        <h4>First User Login</h4>
+                        <p>You can login directly as first user where role is Admin and account is verified</p>
+                        <div><strong>NOTE:</strong> The fake backend displayed this "email" so you can test without an API. A real backend would send a real email.</div>
+                    `, { 
+                        autoClose: true,
+                        priority: 5,
+                        timeout: 5000
+                    });
+                }, 100);
+                
+                return ok({ message: 'Admin registration successful. You can login directly.' });
             } else {
+                // Regular user accounts
                 account.role = Role.User;
-                account.status = 'Inactive'; // User accounts get inacitve status upon creation
+                account.status = 'Inactive'; // User accounts get inactive status upon creation
+                account.dateCreated = new Date().toISOString();
+                account.verificationToken = new Date().getTime().toString();
+                account.isVerified = false;
+                account.refreshTokens = [];
+                delete account.confirmPassword;
+                accounts.push(account);
+                localStorage.setItem(accountsKey, JSON.stringify(accounts));
+
+                // display verification email in alert
+                setTimeout(() => {
+                    const verifyUrl = `${location.origin}/account/verify-email?token=${account.verificationToken}`;
+                    alertService.info(`
+                        <h4>Verification Email</h4>
+                        <p>Thanks for registering!</p>
+                        <p>Please click the below link to verify your email address:</p>
+                        <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+                        <div><strong>NOTE:</strong> The fake backend displayed this "email" so you can test without an API. A real backend would send a real email.</div>
+                    `, { autoclose: false });
+                }, 1000);
+
+                return ok({ message: 'Registration successful, please check your email for verification instructions' });
             }
-            account.dateCreated = new Date().toISOString();
-            account.verificationToken = new Date().getTime().toString();
-            account.isVerified = false;
-            account.refreshTokens = [];
-            delete account.confirmPassword;
-            accounts.push(account);
-            localStorage.setItem(accountsKey, JSON.stringify(accounts));
-
-            // display verification email in alert
-            setTimeout(() => {
-                const verifyUrl = `${location.origin}/account/verify-email?token=${account.verificationToken}`;
-                alertService.info(`
-                    <h4>Verification Email</h4>
-                    <p>Thanks for registering!</p>
-                    <p>Please click the below link to verify your email address:</p>
-                    <p><a href="${verifyUrl}">${verifyUrl}</a></p>
-                    <div><strong>NOTE:</strong> The fake backend displayed this "email" so you can test without an API. A real backend would send a real email.</div>
-                `, { autoclose: false });
-            }, 1000);
-
-            return ok();
         }
 
         function verifyEmail() {
@@ -412,8 +436,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
         // Employee route functions
         function getEmployees() {
             // Map employees with account and department information
-            const enrichedEmployees = employees.map(employee => {
-                // Get user account details
+            const enrichedEmployees = employees.map(employee => {                // Get user account details
                 const user = accounts.find(a => a.id === employee.userId);
                 
                 // Get department details

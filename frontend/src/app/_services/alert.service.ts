@@ -16,19 +16,44 @@ export class AlertService {
 
     // convenience methods
     success(message: string, options?: any) {
-        this.alert(new Alert({ ...options, type: AlertType.Success, message }));
+        this.alert(new Alert({ 
+            ...options, 
+            type: AlertType.Success, 
+            message,
+            priority: options?.priority || 10, // Higher default priority for success messages
+            autoClose: options?.autoClose !== undefined ? options.autoClose : true 
+        }));
     }
 
     error(message: string, options?: any) {
-        this.alert(new Alert({ ...options, type: AlertType.Error, message }));
+        this.alert(new Alert({ 
+            ...options, 
+            type: AlertType.Error, 
+            message,
+            priority: options?.priority || 10,
+            autoClose: options?.autoClose !== undefined ? options.autoClose : true 
+        }));
     }
 
     info(message: string, options?: any) {
-        this.alert(new Alert({ ...options, type: AlertType.Info, message }));
+        this.alert(new Alert({ 
+            ...options, 
+            type: AlertType.Info, 
+            message,
+            priority: options?.priority || 5,
+            autoClose: options?.autoClose !== undefined ? options.autoClose : true,
+            timeout: options?.timeout || 3000  // Default 3 seconds, but can be customized
+        }));
     }
 
     warn(message: string, options?: any) {
-        this.alert(new Alert({ ...options, type: AlertType.Warning, message }));
+        this.alert(new Alert({ 
+            ...options, 
+            type: AlertType.Warning, 
+            message,
+            priority: options?.priority || 7,
+            autoClose: options?.autoClose !== undefined ? options.autoClose : true 
+        }));
     }
 
     // core alert method

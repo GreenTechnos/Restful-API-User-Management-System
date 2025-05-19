@@ -32,15 +32,15 @@ async function authenticate({ email, password, ipAddress }) {
     }
 
     if (!account.isVerified) {
-        throw 'Email is not verified';
+        throw 'Email is not yet verified';
     }
 
     if (account.status === 'Inactive') {
-        throw 'Account is inactive. Please contact administrator.';
+        throw 'Account is inactive. Please contact system administrator.';
     }
 
     if (!(await bcrypt.compare(password, account.passwordHash))) {
-        throw 'Password is incorrect';
+        throw 'Incorrect password';
     }
 
     // authentication successful so generate jwt and refresh tokens

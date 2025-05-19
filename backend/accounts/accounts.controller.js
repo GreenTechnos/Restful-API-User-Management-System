@@ -41,17 +41,11 @@ function authenticate(req, res, next) {
             res.json(account);
         })
         .catch(error => {
-            if (error === 'Email does not exist') {
-                return res.status(400).json({ message: error });
-            }
-            if (error === 'Account not verified. Please check your email for verification instructions.') {
-                return res.status(400).json({ 
-                    message: error,
-                    verificationRequired: true,
-                    email: email
-                });
-            }
-            if (error === 'Password is incorrect') {
+            // Handle all specific error messages
+            if (error === 'Email does not exist' ||
+                error === 'Email is not yet verified' ||
+                error === 'Incorrect password' ||
+                error === 'Account is inactive. Please contact system adminstrator.') {
                 return res.status(400).json({ message: error });
             }
             next(error);
