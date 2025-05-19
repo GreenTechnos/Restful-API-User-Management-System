@@ -30,10 +30,13 @@ export class AlertComponent implements OnInit, OnDestroy {
 
                 // add alert to array
                 this.alerts.push(alert);
+                
+                // Sort alerts by priority (higher numbers first)
+                this.alerts.sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
                 // auto close alert if required
                 if (alert.autoClose) {
-                    setTimeout(() => this.removeAlert(alert), 3000);
+                    setTimeout(() => this.removeAlert(alert), alert.timeout || 3000);
                 }
             });
 

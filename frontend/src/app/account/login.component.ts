@@ -58,7 +58,17 @@ export class LoginComponent implements OnInit {
                 },
                 error: error => {
                     console.error('Login error:', error);
-                    this.alertService.error(error.error?.message || 'Login failed');
+                    
+                    // Specifically check for the inactive account error and override it
+                    if (error === 'Account is inactive. Please contact administrator.' || 
+                        error.includes('inactive') || 
+                        error.includes('Inactive')) {
+                        // Use our custom message instead
+                        this.alertService.error('Account is inactive. Please contact system administrator.');
+                    } else {
+                        // For all other errors, use the original message
+                        this.alertService.error(error);
+                    }
                     this.loading = false;
                 }
             });
